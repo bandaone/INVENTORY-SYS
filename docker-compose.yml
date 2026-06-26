@@ -1,0 +1,208 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: retail-os-postgres
+    environment:
+      POSTGRES_USER: retail_os
+      POSTGRES_PASSWORD: retail_os_dev_password
+      POSTGRES_DB: retail_os_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retail_os -d retail_os_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - retail-os-network
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: retail-os-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - retail-os-network
+
+  # MedusaJS Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: retail-os-backend
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://retail_os:retail_os_dev_password@postgres:5432/retail_os_dev
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev-jwt-secret-change-in-production
+      COOKIE_SECRET: dev-cookie-secret-change-in-production
+      STORE_CORS: http://localhost:8000
+      ADMIN_CORS: http://localhost:3000,http://localhost:7001
+      BACKEND_URL: http://localhost:9000
+      # MTN MoMo (Sandbox)
+      MTN_MOMO_API_KEY: ${MTN_MOMO_API_KEY:-sandbox-key}
+      MTN_MOMO_SUBSCRIPTION_KEY: ${MTN_MOMO_SUBSCRIPTION_KEY:-sandbox-sub-key}
+      MTN_MOMO_ENVIRONMENT: sandbox
+      # Airtel Money (Sandbox)
+      AIRTEL_CLIENT_ID: ${AIRTEL_CLIENT_ID:-sandbox-client-id}
+      AIRTEL_CLIENT_SECRET: ${AIRTEL_CLIENT_SECRET:-sandbox-secret}
+      AIRTEL_ENVIRONMENT: sandbox
+      # ZRA (Sandbox)
+      ZRA_GATEWAY_URL: https://sandbox.zra.org.zm/api/v1
+      ZRA_TIMEOUT_MS: 30000
+    ports:
+      - "9000:9000"
+      - "7001:7001"  # Admin UI
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+      - backend_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - retail-os-network
+
+  # Owner Dashboard (Next.js)
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile.dev
+    container_name: retail-os-dashboard
+    environment:
+      # APP_DATABASE_URL: uses restricted role - RLS IS enforced (for tenant queries)
+      APP_DATABASE_URL: postgresql://retail_os_app:retail_os_app_password@postgres:5432/retail_os_dev
+      # DATABASE_URL: uses owner role - RLS bypassed (for super-admin queries only)
+      DATABASE_URL: postgresql://retail_os:retail_os_dev_password@postgres:5432/retail_os_dev
+      NEXT_PUBLIC_API_URL: /api/backend
+      NEXT_PUBLIC_API_TIMEOUT: 30000
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: dev-nextauth-secret-change-in-production
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./dashboard:/app
+      - dashboard_node_modules:/app/node_modules
+      - dashboard_next:/app/.next
+    depends_on:
+      - backend
+    command: sh -lc "npm ci --no-audit --no-fund --loglevel=error && npm run dev"
+    networks:
+      - retail-os-network
+
+  # Stocktake App (Mobile Web)
+  stocktake-app:
+    build:
+      context: ./stocktake-app
+      dockerfile: Dockerfile.dev
+    container_name: retail-os-stocktake
+    environment:
+      VITE_API_URL: http://localhost:3000
+      VITE_ENABLE_CAMERA_SCAN: true
+      VITE_ENABLE_RFID: true
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./stocktake-app:/app
+      - stocktake_node_modules:/app/node_modules
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0
+    networks:
+      - retail-os-network
+
+  # Web POS Application (Web Version)
+  pos-app:
+    build:
+      context: ./pos-app
+      dockerfile: Dockerfile.dev
+    container_name: retail-os-pos
+    environment:
+      VITE_API_URL: http://localhost:3000
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./pos-app:/app
+      - pos_node_modules:/app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+    networks:
+      - retail-os-network
+
+  # PGAdmin (Database Management)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: retail-os-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@retailos.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - retail-os-network
+
+  # Redis Commander (Redis Management)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: retail-os-redis-commander
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - retail-os-network
+
+  # Mailhog (Email Testing)
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: retail-os-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - retail-os-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:
+  backend_uploads:
+  backend_node_modules:
+  dashboard_node_modules:
+  dashboard_next:
+  stocktake_node_modules:
+  pos_node_modules:
+
+networks:
+  retail-os-network:
+    driver: bridge

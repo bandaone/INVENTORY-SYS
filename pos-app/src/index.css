@@ -1,0 +1,225 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg-color: #0f1115;
+  --panel-bg: rgba(22, 25, 33, 0.7);
+  --panel-border: rgba(255, 255, 255, 0.05);
+  --primary: #4ade80;
+  --primary-glow: rgba(74, 222, 128, 0.2);
+  --secondary: #60a5fa;
+  --accent: #f472b6;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --hover-bg: rgba(255, 255, 255, 0.05);
+  --shadow-color: rgba(0, 0, 0, 0.2);
+  --shadow-hover: rgba(0, 0, 0, 0.3);
+  --bg-gradient: 
+    radial-gradient(circle at 15% 50%, rgba(96, 165, 250, 0.04), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(74, 222, 128, 0.04), transparent 25%);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  background-image: var(--bg-gradient);
+  background-attachment: fixed;
+  overflow: hidden;
+}
+
+/* App Layout */
+.pos-layout {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Left Panel: Catalog */
+.catalog-panel {
+  flex: 6;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  background-color: var(--bg-color);
+  border-right: 1px solid var(--panel-border);
+}
+
+.catalog-header {
+  margin-bottom: 24px;
+}
+
+.scanner-input {
+  display: flex;
+  align-items: center;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  padding: 16px 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px var(--shadow-color);
+  margin-bottom: 24px;
+}
+
+.scanner-input input {
+  border: none;
+  outline: none;
+  font-family: 'Outfit', sans-serif;
+  font-size: 16px;
+  margin-left: 12px;
+  flex: 1;
+  background: transparent;
+  color: var(--text-main);
+}
+
+.grid-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+  overflow-y: auto;
+  flex: 1;
+  padding-bottom: 24px;
+}
+
+.product-card {
+  background: var(--panel-bg);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+  box-shadow: 0 4px 12px var(--shadow-color);
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.product-card:active {
+  transform: scale(0.95);
+}
+
+.product-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  margin-bottom: auto;
+}
+
+/* Right Panel: Cart */
+.cart-panel {
+  flex: 4;
+  background: var(--panel-bg);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 24px var(--shadow-color);
+  z-index: 10;
+}
+
+.cart-header {
+  padding: 24px;
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cart-items {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.cart-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px dashed var(--panel-border);
+}
+
+.cart-item-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.cart-item-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.cart-item-meta {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.cart-item-price {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+/* Checkout Section */
+.checkout-section {
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid var(--panel-border);
+}
+
+.checkout-totals {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.checkout-totals h2 {
+  font-size: 24px;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.checkout-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-checkout {
+  flex: 1;
+  padding: 20px;
+  border: none;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s;
+}
+
+.btn-checkout:active {
+  transform: scale(0.98);
+}
+
+.btn-cash {
+  background: #0f172a;
+  color: white;
+}
+
+.btn-momo {
+  background: #f59e0b; /* MTN Amber */
+  color: #0f172a;
+}

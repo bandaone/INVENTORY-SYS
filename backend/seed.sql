@@ -1,0 +1,104 @@
+-- Create Tenant
+INSERT INTO tenants (id, name, subscription_tier, max_locations, features)
+VALUES (
+  '11111111-1111-1111-1111-111111111111',
+  'Demo Retail Ltd',
+  'enterprise_fleet',
+  5,
+  '{"zraEnabled": true, "rfidEnabled": true}'::jsonb
+) ON CONFLICT DO NOTHING;
+
+-- Platform superadmin
+INSERT INTO platform_admins (id, name, email, pin_hash)
+VALUES (
+  '99999999-9999-9999-9999-999999999999',
+  'Super Admin',
+  'superadmin@company.com',
+  '1234'
+) ON CONFLICT (email) DO NOTHING;
+
+-- Create Locations
+INSERT INTO locations (id, tenant_id, name, address, is_active)
+VALUES (
+  '22222222-2222-2222-2222-222222222222',
+  '11111111-1111-1111-1111-111111111111',
+  'East Park Branch',
+  'East Park Mall, Lusaka',
+  true
+),
+(
+  '33333333-3333-3333-3333-333333333333',
+  '11111111-1111-1111-1111-111111111111',
+  'Manda Hill Branch',
+  'Manda Hill, Lusaka',
+  true
+) ON CONFLICT DO NOTHING;
+
+-- Create Staff
+INSERT INTO staff (id, tenant_id, name, role, email, pin_hash, location_id)
+VALUES (
+  '44444444-4444-4444-4444-444444444444',
+  '11111111-1111-1111-1111-111111111111',
+  'John Owner',
+  'owner',
+  'owner@demo.com',
+  '1234', -- In production this is hashed
+  '22222222-2222-2222-2222-222222222222'
+),
+(
+  '55555555-5555-5555-5555-555555555555',
+  '11111111-1111-1111-1111-111111111111',
+  'Mary Cashier',
+  'cashier',
+  NULL,
+  '5678',
+  '22222222-2222-2222-2222-222222222222'
+) ON CONFLICT DO NOTHING;
+
+-- Create Variants
+INSERT INTO variants (id, tenant_id, name, category, color, size, cost_price, retail_price)
+VALUES (
+  '66666666-6666-6666-6666-666666666666',
+  '11111111-1111-1111-1111-111111111111',
+  'Classic Denim Jacket',
+  'Jackets',
+  'Blue',
+  'M',
+  220.00,
+  450.00
+),
+(
+  '77777777-7777-7777-7777-777777777777',
+  '11111111-1111-1111-1111-111111111111',
+  'Floral Summer Dress',
+  'Dresses',
+  'Red',
+  'S',
+  150.00,
+  350.00
+) ON CONFLICT DO NOTHING;
+
+-- Create Garments (5 Jackets, 5 Dresses)
+INSERT INTO garments (serial, tenant_id, variant_id, location_id, status, cost_price, retail_price)
+VALUES 
+('DNM-BLU-M-001', '11111111-1111-1111-1111-111111111111', '66666666-6666-6666-6666-666666666666', '22222222-2222-2222-2222-222222222222', 'in_stock', 220.00, 450.00),
+('DNM-BLU-M-002', '11111111-1111-1111-1111-111111111111', '66666666-6666-6666-6666-666666666666', '22222222-2222-2222-2222-222222222222', 'in_stock', 220.00, 450.00),
+('DNM-BLU-M-003', '11111111-1111-1111-1111-111111111111', '66666666-6666-6666-6666-666666666666', '22222222-2222-2222-2222-222222222222', 'in_stock', 220.00, 450.00),
+('DNM-BLU-M-004', '11111111-1111-1111-1111-111111111111', '66666666-6666-6666-6666-666666666666', '33333333-3333-3333-3333-333333333333', 'in_stock', 220.00, 450.00),
+('DNM-BLU-M-005', '11111111-1111-1111-1111-111111111111', '66666666-6666-6666-6666-666666666666', '33333333-3333-3333-3333-333333333333', 'in_stock', 220.00, 450.00),
+('DRS-RED-S-001', '11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777777', '22222222-2222-2222-2222-222222222222', 'in_stock', 150.00, 350.00),
+('DRS-RED-S-002', '11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777777', '22222222-2222-2222-2222-222222222222', 'in_stock', 150.00, 350.00),
+('DRS-RED-S-003', '11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777777', '22222222-2222-2222-2222-222222222222', 'in_stock', 150.00, 350.00),
+('DRS-RED-S-004', '11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777777', '33333333-3333-3333-3333-333333333333', 'in_stock', 150.00, 350.00),
+('DRS-RED-S-005', '11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777777', '33333333-3333-3333-3333-333333333333', 'in_stock', 150.00, 350.00) ON CONFLICT DO NOTHING;
+
+-- Log the ingestions to the audit trail
+INSERT INTO audit_trail (tenant_id, action_type, actor_id, actor_role, resource_type, changes)
+VALUES (
+  '11111111-1111-1111-1111-111111111111',
+  'STOCK_INGESTION',
+  '44444444-4444-4444-4444-444444444444',
+  'owner',
+  'garments',
+  '{"count": 10, "value": 4000.00}'::jsonb
+);

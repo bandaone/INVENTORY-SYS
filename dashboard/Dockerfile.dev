@@ -1,0 +1,17 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies from the lockfile so the image and runtime stay in sync
+RUN npm ci --no-audit --no-fund --loglevel=error
+
+# Copy source code
+COPY . .
+
+# Build for development
+EXPOSE 3000
+
+CMD ["npm", "run", "dev"]

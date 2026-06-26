@@ -1,0 +1,70 @@
+name: Retail OS CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: |
+          dashboard/package-lock.json
+          pos-app/package-lock.json
+          stocktake-app/package-lock.json
+          backend/yarn.lock
+
+    # 1. Dashboard Build (Next.js)
+    - name: Install Dashboard Dependencies
+      working-directory: ./dashboard
+      run: npm ci
+
+    - name: Build Dashboard
+      working-directory: ./dashboard
+      run: npm run build
+      env:
+        NEXT_PUBLIC_SENTRY_DSN: "dummy-dsn" # Prevent Sentry from blocking CI builds
+
+    # 2. POS App Build (React/Vite)
+    - name: Install POS App Dependencies
+      working-directory: ./pos-app
+      run: npm ci
+
+    - name: Build POS App
+      working-directory: ./pos-app
+      run: npm run build
+
+    # 3. Stocktake App Build (React/Vite)
+    - name: Install Stocktake App Dependencies
+      working-directory: ./stocktake-app
+      run: npm ci
+
+    - name: Build Stocktake App
+      working-directory: ./stocktake-app
+      run: npm run build
+
+    # 4. Backend Build (Medusa/Node)
+    - name: Install Backend Dependencies
+      working-directory: ./backend
+      run: yarn install --frozen-lockfile
+
+    - name: Build Backend
+      working-directory: ./backend
+      run: yarn build
+
+    # Note: Database migrations and e2e testing would be configured here using services container (Postgres)

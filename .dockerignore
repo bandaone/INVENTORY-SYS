@@ -1,0 +1,65 @@
+# Dependencies
+**/node_modules
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/.pnpm-debug.log*
+
+# Build outputs
+**/dist
+**/build
+**/.next
+**/out
+
+# Environment files
+**/.env
+**/.env.local
+**/.env.*.local
+
+# IDE
+**/.vscode
+**/.idea
+**/*.swp
+**/*.swo
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Git
+**/.git
+**/.gitignore
+
+# Documentation
+**/README*.md
+**/CHANGELOG.md
+
+# Tests
+**/coverage
+**/.nyc_output
+**/test-results
+
+# Logs
+**/logs
+**/*.log
+
+# Flutter
+pos-app/.dart_tool
+pos-app/.flutter-plugins
+pos-app/.flutter-plugins-dependencies
+pos-app/build
+pos-app/.pub-cache
+
+# Database
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.sqlite
+
+# Docker
+docker-compose*.yml
+**/Dockerfile*
+
+# Temporary
+**/tmp
+**/temp

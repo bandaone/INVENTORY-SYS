@@ -1,0 +1,455 @@
+# Retail OS Owner Dashboard
+
+Next.js web application for business owners and managers to monitor and manage retail operations.
+
+## Overview
+
+The dashboard provides:
+- Real-time metrics and KPIs
+- Multi-location inventory matrix
+- Sales reports and analytics
+- Staff management
+- Audit trail
+- System configuration
+- Report generation and export
+
+## Tech Stack
+
+- **Framework**: Next.js 14 with App Router
+- **UI Library**: Material-UI or Ant Design
+- **State Management**: React Query (TanStack Query)
+- **Charts**: Recharts or Apache ECharts
+- **Deployment**: AWS Amplify or S3 + CloudFront
+
+## Project Structure
+
+```
+dashboard/
+├── app/                       # Next.js app router
+│   ├── (auth)/
+│   │   ├── login/
+│   │   └── layout.tsx
+│   ├── (dashboard)/
+│   │   ├── page.tsx          # Dashboard home
+│   │   ├── inventory/
+│   │   ├── reports/
+│   │   ├── staff/
+│   │   ├── audit-trail/
+│   │   └── settings/
+│   ├── api/                   # API routes (if needed)
+│   ├── layout.tsx
+│   └── globals.css
+├── components/
+│   ├── ui/                    # Reusable UI components
+│   ├── charts/                # Chart components
+│   ├── tables/                # Table components
+│   └── forms/                 # Form components
+├── lib/
+│   ├── api-client.ts          # API client
+│   ├── hooks/                 # Custom React hooks
+│   └── utils/                 # Helper functions
+├── public/
+│   ├── images/
+│   └── icons/
+├── __tests__/
+├── .env.local.example
+├── next.config.js
+├── package.json
+└── tsconfig.json
+```
+
+## Quick Start
+
+See [Development Setup](../docs/development-setup.md) for detailed instructions.
+
+```bash
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.local.example .env.local
+# Edit .env.local with API URL
+
+# Start development server
+npm run dev
+
+# Open http://localhost:3000
+```
+
+## Configuration
+
+Edit `.env.local`:
+
+```bash
+# API Configuration
+NEXT_PUBLIC_API_URL=http://localhost:9000
+NEXT_PUBLIC_API_TIMEOUT=30000
+
+# Authentication
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your-nextauth-secret
+
+# Feature Flags
+NEXT_PUBLIC_ENABLE_RFID=true
+NEXT_PUBLIC_ENABLE_ZRA=true
+```
+
+## Features
+
+### Dashboard Overview
+
+Real-time metrics and visualizations:
+
+```typescript
+// components/DashboardMetrics.tsx
+export function DashboardMetrics() {
+  const { data: metrics } = useQuery({
+    queryKey: ['dashboard', 'overview'],
+    queryFn: () => api.getDashboardOverview(),
+    refetchInterval: 60000, // Refresh every minute
+  });
+
+  return (
+    <Grid container spacing={3}>
+      <Grid item xs={12} md={3}>
+        <MetricCard
+          title="Today's Revenue"
+          value={formatCurrency(metrics.todayRevenue)}
+          icon={<AttachMoneyIcon />}
+        />
+      </Grid>
+      {/* More metrics */}
+    </Grid>
+  );
+}
+```
+
+### Inventory Matrix
+
+Location × Variant grid with color-coded stock levels:
+
+```typescript
+// components/InventoryMatrix.tsx
+export function InventoryMatrix() {
+  const { data } = useQuery({
+    queryKey: ['inventory', 'matrix'],
+    queryFn: () => api.getInventoryMatrix(),
+  });
+
+  return (
+    <DataGrid
+      rows={data.variants}
+      columns={[
+        { field: 'name', headerName: 'Variant', width: 200 },
+        ...data.locations.map(loc => ({
+          field: loc.id,
+          headerName: loc.name,
+          width: 120,
+          renderCell: (params) => (
+            <StockCell
+              quantity={params.value}
+              threshold={params.row.reorderThreshold}
+            />
+          ),
+        })),
+      ]}
+    />
+  );
+}
+
+function StockCell({ quantity, threshold }) {
+  const color = quantity <= threshold ? 'error' :
+                quantity <= threshold * 1.5 ? 'warning' : 'success';
+  
+  return (
+    <Chip label={quantity} color={color} size="small" />
+  );
+}
+```
+
+### Reports
+
+Generate and export reports:
+
+```typescript
+// app/(dashboard)/reports/page.tsx
+export default function ReportsPage() {
+  const [reportType, setReportType] = useState('best_sellers');
+  const [dateRange, setDateRange] = useState({ start: null, end: null });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['reports', reportType, dateRange],
+    queryFn: () => api.generateReport(reportType, dateRange),
+    enabled: !!dateRange.start && !!dateRange.end,
+  });
+
+  const handleExport = async (format: 'pdf' | 'csv') => {
+    const blob = await api.exportReport(data.reportId, format);
+    downloadBlob(blob, `${reportType}_${Date.now()}.${format}`);
+  };
+
+  return (
+    <Container>
+      <ReportFilters
+        reportType={reportType}
+        onReportTypeChange={setReportType}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+      />
+      
+      {isLoading && <LoadingSpinner />}
+      
+      {data && (
+        <>
+          <ReportVisualization data={data} />
+          <ExportButtons onExport={handleExport} />
+        </>
+      )}
+    </Container>
+  );
+}
+```
+
+### Staff Management
+
+CRUD operations for staff:
+
+```typescript
+// app/(dashboard)/staff/page.tsx
+export default function StaffPage() {
+  const { data: staff } = useQuery({
+    queryKey: ['staff'],
+    queryFn: () => api.getStaff(),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: StaffData) => api.createStaff(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['staff'] });
+      toast.success('Staff member created');
+    },
+  });
+
+  return (
+    <Container>
+      <StaffTable data={staff} />
+      <CreateStaffDialog onSubmit={createMutation.mutate} />
+    </Container>
+  );
+}
+```
+
+## API Client
+
+Centralized API client with authentication:
+
+```typescript
+// lib/api-client.ts
+import { getSession } from 'next-auth/react';
+
+class ApiClient {
+  private baseUrl = process.env.NEXT_PUBLIC_API_URL;
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const session = await getSession();
+    
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.token}`,
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      throw new ApiError(response.status, await response.json());
+    }
+
+    return response.json();
+  }
+
+  // Dashboard
+  getDashboardOverview() {
+    return this.request<DashboardMetrics>('/dashboard/overview');
+  }
+
+  // Inventory
+  getInventoryMatrix() {
+    return this.request<InventoryMatrix>('/dashboard/inventory/matrix');
+  }
+
+  // Reports
+  generateReport(type: string, dateRange: DateRange) {
+    return this.request<Report>(`/dashboard/reports/${type}`, {
+      method: 'POST',
+      body: JSON.stringify(dateRange),
+    });
+  }
+
+  // Staff
+  getStaff() {
+    return this.request<Staff[]>('/admin/staff');
+  }
+
+  createStaff(data: StaffData) {
+    return this.request<Staff>('/admin/staff', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+}
+
+export const api = new ApiClient();
+```
+
+## Authentication
+
+NextAuth.js integration:
+
+```typescript
+// app/api/auth/[...nextauth]/route.ts
+import NextAuth from 'next-auth';
+import CredentialsProvider from 'next-auth/providers/credentials';
+
+const handler = NextAuth({
+  providers: [
+    CredentialsProvider({
+      credentials: {
+        email: { label: "Email", type: "text" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        const res = await fetch(`${process.env.API_URL}/auth/login`, {
+          method: 'POST',
+          body: JSON.stringify(credentials),
+          headers: { "Content-Type": "application/json" }
+        });
+
+        const user = await res.json();
+
+        if (res.ok && user) {
+          return user;
+        }
+        return null;
+      }
+    })
+  ],
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.accessToken = user.token;
+        token.role = user.role;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      session.accessToken = token.accessToken;
+      session.user.role = token.role;
+      return session;
+    }
+  }
+});
+
+export { handler as GET, handler as POST };
+```
+
+## Testing
+
+```bash
+# Unit and component tests
+npm test
+
+# Watch mode
+npm run test:watch
+
+# Coverage
+npm run test:coverage
+
+# E2E with Playwright
+npm run test:e2e
+```
+
+## Building
+
+```bash
+# Build static export
+npm run build
+
+# Build output in 'out/' directory
+
+# Preview build
+npm run start
+```
+
+## Deployment
+
+### Static Export to S3
+
+```bash
+# Build
+npm run build
+
+# Deploy to S3
+aws s3 sync out/ s3://retail-os-dashboard-prod/ --delete
+
+# Invalidate CloudFront
+aws cloudfront create-invalidation \
+  --distribution-id <id> \
+  --paths "/*"
+```
+
+### Vercel Deployment
+
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel --prod
+```
+
+## Performance
+
+### Optimization
+
+- Server components where possible
+- Code splitting with dynamic imports
+- Image optimization with Next/Image
+- API response caching with React Query
+- Static generation for public pages
+
+### Targets
+
+- First Contentful Paint: < 1.5s
+- Time to Interactive: < 3s
+- Lighthouse score: > 90
+
+## Troubleshooting
+
+### API Connection Issues
+
+Check API URL in `.env.local` and verify backend is running.
+
+### Authentication Errors
+
+Clear cookies and re-login. Verify NEXTAUTH_SECRET is set.
+
+### Build Errors
+
+```bash
+# Clear cache
+rm -rf .next
+npm run build
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for development guidelines.
+
+## License
+
+Proprietary - All Rights Reserved

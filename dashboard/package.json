@@ -1,0 +1,39 @@
+{
+  "name": "retail-os-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@sentry/nextjs": "^10.61.0",
+    "@types/pg": "^8.20.0",
+    "chart.js": "^4.4.0",
+    "date-fns": "^3.6.0",
+    "html5-qrcode": "^2.3.8",
+    "lucide-react": "^0.344.0",
+    "next": "14.2.29",
+    "pg": "^8.21.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^18",
+    "react-barcode": "^1.6.1",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18",
+    "react-hot-toast": "^2.4.1",
+    "swr": "^2.2.5",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.41.2",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.29",
+    "typescript": "^5"
+  }
+}

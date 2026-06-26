@@ -1,0 +1,123 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.project
+.settings/
+.classpath
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.npm
+.eslintcache
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production
+.env.test
+
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Backend specific
+backend/uploads/
+backend/.medusa/
+backend/logs/
+
+# Dashboard (Next.js)
+dashboard/.next/
+dashboard/out/
+
+# POS App (Flutter)
+pos-app/.dart_tool/
+pos-app/.flutter-plugins
+pos-app/.flutter-plugins-dependencies
+pos-app/.packages
+pos-app/.pub-cache/
+pos-app/.pub/
+pos-app/build/
+pos-app/ios/Flutter/Generated.xcconfig
+pos-app/ios/Flutter/flutter_export_environment.sh
+pos-app/macos/Flutter/GeneratedPluginRegistrant.swift
+pos-app/macos/Flutter/ephemeral/
+pos-app/windows/flutter/generated_plugin_registrant.cc
+pos-app/windows/flutter/generated_plugin_registrant.h
+pos-app/windows/flutter/generated_plugins.cmake
+
+# Stocktake App
+stocktake-app/dist/
+stocktake-app/.cache/
+
+# Testing
+coverage/
+*.lcov
+.nyc_output/
+test-results/
+playwright-report/
+*.spec.js.snap
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Terraform
+infrastructure/terraform/.terraform/
+infrastructure/terraform/*.tfstate
+infrastructure/terraform/*.tfstate.backup
+infrastructure/terraform/.terraform.lock.hcl
+infrastructure/terraform/terraform.tfvars
+
+# Docker
+docker-compose.override.yml
+
+# Certificates and keys
+*.pem
+*.key
+*.cert
+*.p12
+*.jks
+*.keystore
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Package files
+*.zip
+*.tar.gz
+*.rar
+
+# Documentation builds
+docs/_build/
+site/
+
+# Misc
+.cache/
+.parcel-cache/
+.turbo/
