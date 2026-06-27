@@ -13,10 +13,16 @@ const adminConnectionString =
   'postgresql://retail_os:retail_os_dev_password@postgres:5432/retail_os_dev';
 
 // Tenant-scoped pool — uses restricted user, RLS applies
-export const pool = new Pool({ connectionString: appConnectionString });
+export const pool = new Pool({ 
+  connectionString: appConnectionString,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined
+});
 
 // Admin pool — bypasses RLS, only for super-admin pages
-export const adminPool = new Pool({ connectionString: adminConnectionString });
+export const adminPool = new Pool({ 
+  connectionString: adminConnectionString,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined
+});
 
 export function requireTenantId(tenantId?: string | null): string {
   if (!tenantId) throw new Error('Tenant context required');
