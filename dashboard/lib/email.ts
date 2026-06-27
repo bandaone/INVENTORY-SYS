@@ -38,7 +38,7 @@ export async function sendTrialReminderEmail(to: string, ownerName: string, days
     const data = await resend.emails.send({
       from: `Retail OS Billing <${FROM_EMAIL}>`,
       to,
-      subject: \`Action Required: \${daysLeft} Days Left in Trial ⏰\`,
+      subject: `Action Required: ${daysLeft} Days Left in Trial ⏰`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a1a;">
           <h2 style="color: #f59e0b;">Your free trial ends in ${daysLeft} days!</h2>
