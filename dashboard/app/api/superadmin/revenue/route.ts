@@ -12,22 +12,16 @@ export async function GET() {
   try {
     checkSuperAdmin();
 
-    // 1. Current MRR (Active paid tenants)
+    // 1. Current MRR (Active locations * 350 ZMW)
     const mrrResult = await adminPool.query(`
-      SELECT 
-        subscription_tier, 
-        COUNT(*) as count
-      FROM tenants 
-      WHERE status = 'ACTIVE' AND subscription_tier != 'boutique_starter'
-      GROUP BY subscription_tier
+      SELECT COUNT(l.id) as total_locations
+      FROM locations l
+      JOIN tenants t ON l.tenant_id = t.id
+      WHERE t.status = 'ACTIVE' AND l.is_active = true
     `);
 
-    // Assuming pricing: growth = 500 ZMW, enterprise = 2000 ZMW
-    let mrr = 0;
-    mrrResult.rows.forEach(r => {
-      if (r.subscription_tier === 'growth') mrr += Number(r.count) * 500;
-      if (r.subscription_tier === 'enterprise_fleet') mrr += Number(r.count) * 2000;
-    });
+    // Base SaaS fee: 1,500 ZMW per active store location (Value-based pricing)
+    const mrr = (Number(mrrResult.rows[0]?.total_locations) || 0) * 1500;
 
     // 2. Overdue Invoices
     const overdueResult = await adminPool.query(`

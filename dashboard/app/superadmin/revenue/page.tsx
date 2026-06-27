@@ -68,7 +68,7 @@ export default function RevenuePipelinePage() {
         <OwnerMetricCard 
           label="Monthly Recurring Revenue" 
           value={loading ? '...' : `ZMW ${data?.mrr.toLocaleString() || '0'}`} 
-          note="Projected from active Growth & Enterprise fleets" 
+          note="Projected from 1,500 ZMW per active store location" 
           tone="primary" 
         />
         <OwnerMetricCard 
