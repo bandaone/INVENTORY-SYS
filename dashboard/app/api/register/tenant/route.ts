@@ -88,6 +88,11 @@ export async function POST(req: Request) {
     cookies().set('staff_name', owner_name, cookieOptions);
     cookies().set('staff_role', 'owner', cookieOptions);
 
+    // Send the Welcome Email (Non-blocking)
+    import('@/lib/email').then(({ sendWelcomeEmail }) => {
+      sendWelcomeEmail(email, owner_name).catch(console.error);
+    });
+
     return NextResponse.json({ success: true, tenantId });
   } catch (error) {
     // Log the actual error to the server console safely, do NOT expose 'error' object to client

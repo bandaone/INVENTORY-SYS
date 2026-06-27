@@ -27,21 +27,33 @@ export async function GET(req: Request) {
 
     // 2. Find tenants entering Day 3 of trial — send reminder (Day 5 - 2 days)
     const day3Tenants = await adminPool.query(`
-      SELECT id, name
-      FROM tenants
-      WHERE status = 'TRIAL'
-        AND trial_ends_at IS NOT NULL
-        AND trial_ends_at BETWEEN NOW() + interval '1 day 23 hours' AND NOW() + interval '2 days 1 hour'
+      SELECT t.id, t.name, ts.owner_email
+      FROM tenants t
+      LEFT JOIN tenant_settings ts ON ts.tenant_id = t.id
+      WHERE t.status = 'TRIAL'
+        AND t.trial_ends_at IS NOT NULL
+        AND t.trial_ends_at BETWEEN NOW() + interval '1 day 23 hours' AND NOW() + interval '2 days 1 hour'
     `);
 
     // 3. Find tenants entering final Day 5 — send urgent nudge
     const day5Tenants = await adminPool.query(`
-      SELECT id, name
-      FROM tenants
-      WHERE status = 'TRIAL'
-        AND trial_ends_at IS NOT NULL
-        AND trial_ends_at BETWEEN NOW() - interval '1 hour' AND NOW() + interval '23 hours'
+      SELECT t.id, t.name, ts.owner_email
+      FROM tenants t
+      LEFT JOIN tenant_settings ts ON ts.tenant_id = t.id
+      WHERE t.status = 'TRIAL'
+        AND t.trial_ends_at IS NOT NULL
+        AND t.trial_ends_at BETWEEN NOW() - interval '1 hour' AND NOW() + interval '23 hours'
     `);
+
+    // Trigger emails asynchronously
+    import('@/lib/email').then(({ sendTrialReminderEmail }) => {
+      day3Tenants.rows.forEach(tenant => {
+        if (tenant.owner_email) sendTrialReminderEmail(tenant.owner_email, tenant.name, 2).catch(console.error);
+      });
+      day5Tenants.rows.forEach(tenant => {
+        if (tenant.owner_email) sendTrialReminderEmail(tenant.owner_email, tenant.name, 0).catch(console.error);
+      });
+    });
 
     // 4. Generate monthly invoices for ACTIVE tenants on the 1st of the month
     const today = new Date();
