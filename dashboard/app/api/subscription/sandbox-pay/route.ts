@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       JSON.stringify({ 
         provider: 'sandbox', 
         method, 
-        transaction_id: \`SANDBOX_TX_\${Math.random().toString(36).substring(2, 9).toUpperCase()}\`,
+        transaction_id: `SANDBOX_TX_${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
         note: 'Activated via Sandbox Payment Gateway'
       })
     ]);

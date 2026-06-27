@@ -176,9 +176,9 @@ export default function SubscriptionPage() {
                     <span className="font-semibold text-sm">
                       {evt.event_type.replace('_', ' ')}
                     </span>
-                    <span className={\`text-xs font-bold px-2 py-1 rounded \${
+                    <span className={`text-xs font-bold px-2 py-1 rounded ${
                       evt.status === 'POSTED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-500'
-                    }\`}>
+                    }`}>
                       {evt.status}
                     </span>
                   </div>
