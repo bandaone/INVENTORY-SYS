@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { fetchTenantQuery } from '@/lib/db';
