@@ -20,8 +20,8 @@ export async function GET() {
       WHERE t.status = 'ACTIVE' AND l.is_active = true
     `);
 
-    // Base SaaS fee: 1,500 ZMW per active store location (Value-based pricing)
-    const mrr = (Number(mrrResult.rows[0]?.total_locations) || 0) * 1500;
+    // Base SaaS fee: 2,500 ZMW per active store location (Value-based pricing + Gateway Absorption)
+    const mrr = (Number(mrrResult.rows[0]?.total_locations) || 0) * 2500;
 
     // 2. Overdue Invoices
     const overdueResult = await adminPool.query(`
