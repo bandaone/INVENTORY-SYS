@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, Package, History, AlertTriangle,
-  Users, Settings, Hexagon, Sun, Moon, Building2, ChevronDown, LogOut
+  Users, Settings, Hexagon, Sun, Moon, Building2, ChevronDown, LogOut, CreditCard
 } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 
@@ -20,6 +20,7 @@ const ALL_NAV = [
   { name: 'Audit Trail',     path: '/audit',      icon: History,         roles: ['owner'] },
   { name: 'Sync Monitoring', path: '/conflicts',  icon: AlertTriangle,   roles: ['owner'] },
   { name: 'Staff',           path: '/staff',      icon: Users,           roles: ['owner'] },
+  { name: 'Subscription',    path: '/subscription', icon: CreditCard,    roles: ['owner'] },
   { name: 'Settings',        path: '/settings',   icon: Settings,        roles: ['owner'] },
 ];
 
