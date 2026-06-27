@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ScanLine, Package, ShoppingCart, Trash2, CheckCircle2, LogOut, Hexagon, Lock, Plus, Minus, Search, Wifi, WifiOff, RefreshCcw } from 'lucide-react';
 
 interface CatalogItem {

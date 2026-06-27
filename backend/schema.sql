@@ -72,6 +72,11 @@ CREATE TABLE IF NOT EXISTS platform_admins (
 );
 CREATE INDEX IF NOT EXISTS idx_platform_admins_email ON platform_admins(email);
 
+-- Insert initial Platform Admin
+INSERT INTO platform_admins (name, email, pin_hash)
+VALUES ('Super Admin', '01dennisbanda@gmail.com', '1234')
+ON CONFLICT (email) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS variants (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,

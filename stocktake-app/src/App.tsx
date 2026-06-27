@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Hexagon, Building2, ScanLine, CheckCircle2, AlertCircle, XCircle, X, Lock, LogOut, Loader } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 
