@@ -9,12 +9,22 @@ interface ThemeContextType {
   toggleTheme: () => void;
 }
 
-// Safe default — client components that render before hydration
-// get 'dark' + a no-op toggle instead of an exception.
 const ThemeContext = createContext<ThemeContextType>({
   theme: 'dark',
   toggleTheme: () => {},
 });
+
+// Derive a per-user storage key from the session cookie so that
+// User A's theme preference never overwrites User B's.
+function getThemeKey(): string {
+  if (typeof document === 'undefined') return 'retail-os-theme-default';
+  // Read the tenant+staff identity baked into cookies by the login route
+  const staffCookie = document.cookie.split('; ').find(r => r.startsWith('staff_name='));
+  const tenantCookie = document.cookie.split('; ').find(r => r.startsWith('tenant_id='));
+  const staff = staffCookie ? staffCookie.split('=')[1] : 'default';
+  const tenant = tenantCookie ? tenantCookie.split('=')[1] : 'default';
+  return `retail-os-theme-${tenant}-${staff}`;
+}
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>('dark');
@@ -22,7 +32,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setMounted(true);
-    const saved = localStorage.getItem('retail-os-theme') as Theme | null;
+    const key = getThemeKey();
+    const saved = localStorage.getItem(key) as Theme | null;
     const initial: Theme = saved === 'light' || saved === 'dark' ? saved : 'dark';
     setTheme(initial);
     document.documentElement.setAttribute('data-theme', initial);
@@ -31,13 +42,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const toggleTheme = () => {
     const next: Theme = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
-    localStorage.setItem('retail-os-theme', next);
+    const key = getThemeKey();
+    localStorage.setItem(key, next);
     document.documentElement.setAttribute('data-theme', next);
   };
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
-      {/* Hide until client hydration is complete to prevent flash */}
       <div style={{ visibility: mounted ? 'visible' : 'hidden' }}>
         {children}
       </div>
