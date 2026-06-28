@@ -53,8 +53,8 @@ export default function SubscriptionPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center text-emerald-500">
-        <Loader2 className="animate-spin w-8 h-8" />
+      <div style={{ display: 'flex', minHeight: '60vh', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+        <Loader2 size={36} className="spin" />
       </div>
     );
   }
@@ -63,108 +63,146 @@ export default function SubscriptionPage() {
   const isActive = data?.tenant?.status === 'ACTIVE';
   const amountDue = (data?.locations || 1) * 2500;
 
-  const statusBadge = isTrial
-    ? <span className="px-4 py-1.5 rounded-full bg-yellow-500/10 text-yellow-500 text-sm font-bold border border-yellow-500/20">Free Trial</span>
-    : isActive
-    ? <span className="px-4 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 text-sm font-bold border border-emerald-500/20 flex items-center gap-2"><CheckCircle2 size={16} /> Active Plan</span>
-    : <span className="px-4 py-1.5 rounded-full bg-red-500/10 text-red-500 text-sm font-bold border border-red-500/20">Suspended</span>;
+  const tierLabel: Record<string, string> = {
+    boutique_starter: 'Boutique Starter',
+    growth: 'Growth',
+    enterprise_fleet: 'Enterprise Fleet',
+  };
+  const planName = tierLabel[data?.tenant?.subscription_tier] || 'Premium SaaS Plan';
 
   return (
-    <div className="max-w-4xl mx-auto p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-extrabold text-white mb-2">Billing &amp; Subscription</h1>
-        <p className="text-white/50">Manage your Retail OS plan and payment methods.</p>
-      </div>
+    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '40px 32px', fontFamily: 'Outfit, sans-serif', color: 'var(--text-main)' }}>
+      <h1 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '6px' }}>Billing &amp; Subscription</h1>
+      <p style={{ color: 'var(--text-muted)', marginBottom: '40px', fontSize: '15px' }}>
+        Manage your Retail OS plan and payment methods.
+      </p>
 
       {success && (
-        <div className="mb-8 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center gap-3">
+        <div style={{ padding: '16px 20px', background: 'var(--primary-glow)', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: '12px', marginBottom: '32px', display: 'flex', alignItems: 'center', gap: '12px', fontWeight: 600 }}>
           <CheckCircle2 size={20} />
-          <span className="font-bold">Payment Successful!</span> Your store is now fully active.
+          Payment Successful! Your store is now fully active.
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Col */}
-        <div className="lg:col-span-2 space-y-8">
-          <div className="bg-[#16181d] border border-white/5 rounded-3xl p-8 relative overflow-hidden">
-            <div className="absolute top-8 right-8">{statusBadge}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', alignItems: 'start' }}>
 
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-14 h-14 bg-gradient-to-br from-indigo-500/20 to-purple-500/10 rounded-2xl flex items-center justify-center text-indigo-400 border border-indigo-400/20">
-                <Store size={28} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold">Premium SaaS Plan</h2>
-                <p className="text-white/50 text-sm">{data?.locations} Active Location{data?.locations > 1 ? 's' : ''}</p>
-              </div>
-            </div>
+        {/* Plan Card */}
+        <div className="glass-panel" style={{ padding: '36px', position: 'relative' }}>
 
-            <div className="flex items-end gap-2 mb-8">
-              <span className="text-5xl font-black tracking-tight">ZMW {amountDue.toLocaleString()}</span>
-              <span className="text-white/40 mb-2 font-semibold">/ month</span>
-            </div>
-
-            <div className="space-y-3 mb-8 text-sm text-white/70">
-              <div className="flex items-center gap-3"><CheckCircle2 size={18} className="text-emerald-400" /> Unlimited Users &amp; Cashiers</div>
-              <div className="flex items-center gap-3"><CheckCircle2 size={18} className="text-emerald-400" /> Unlimited Products &amp; Sales</div>
-              <div className="flex items-center gap-3"><CheckCircle2 size={18} className="text-emerald-400" /> Advanced Stock Analytics</div>
-              <div className="flex items-center gap-3"><CheckCircle2 size={18} className="text-emerald-400" /> ZRA Smart Invoice Integration</div>
-            </div>
-
+          {/* Status badge */}
+          <div style={{ position: 'absolute', top: '24px', right: '24px' }}>
             {isTrial && (
-              <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-teal-500/5 border border-emerald-500/20">
-                <h3 className="font-bold text-white mb-2 flex items-center gap-2">
-                  <Lock size={16} className="text-emerald-400" /> Activate your subscription
-                </h3>
-                <p className="text-sm text-white/60 mb-5">
-                  Your trial will expire soon. Secure your store data by activating your plan today.
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={() => handleSandboxPayment('MTN MoMo')}
-                    disabled={paying}
-                    className="flex-1 bg-[#ffcc00] hover:bg-[#e6b800] text-black font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
-                  >
-                    {paying ? <Loader2 className="animate-spin w-5 h-5" /> : 'Pay via MTN MoMo'}
-                  </button>
-                  <button
-                    onClick={() => handleSandboxPayment('Airtel Money')}
-                    disabled={paying}
-                    className="flex-1 bg-[#ff0000] hover:bg-[#cc0000] text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-50"
-                  >
-                    {paying ? <Loader2 className="animate-spin w-5 h-5" /> : 'Pay via Airtel'}
-                  </button>
-                </div>
-                <p className="mt-4 text-xs text-center text-white/40 uppercase tracking-widest font-bold">(Test Sandbox Mode)</p>
-              </div>
+              <span style={{ padding: '6px 14px', borderRadius: '20px', background: 'rgba(245,158,11,0.15)', color: 'var(--warning)', fontSize: '13px', fontWeight: 700, border: '1px solid rgba(245,158,11,0.3)' }}>
+                Free Trial
+              </span>
+            )}
+            {isActive && (
+              <span style={{ padding: '6px 14px', borderRadius: '20px', background: 'var(--primary-glow)', color: 'var(--primary)', fontSize: '13px', fontWeight: 700, border: '1px solid var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <CheckCircle2 size={14} /> Active Plan
+              </span>
+            )}
+            {!isTrial && !isActive && (
+              <span style={{ padding: '6px 14px', borderRadius: '20px', background: 'rgba(239,68,68,0.15)', color: 'var(--danger)', fontSize: '13px', fontWeight: 700, border: '1px solid rgba(239,68,68,0.3)' }}>
+                Suspended
+              </span>
             )}
           </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
+            <div style={{ width: '56px', height: '56px', background: 'var(--primary-glow)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+              <Store size={28} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: '22px', fontWeight: 700 }}>{planName}</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>{data?.locations} Active Location{data?.locations > 1 ? 's' : ''}</p>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '28px' }}>
+            <span style={{ fontSize: '48px', fontWeight: 900, letterSpacing: '-0.03em' }}>
+              ZMW {amountDue.toLocaleString()}
+            </span>
+            <span style={{ color: 'var(--text-muted)', fontWeight: 600, marginLeft: '8px' }}>/ month</span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '32px' }}>
+            {[
+              'Unlimited Users & Cashiers',
+              'Unlimited Products & Sales',
+              'Advanced Stock Analytics',
+              'ZRA Smart Invoice Integration',
+            ].map((feature) => (
+              <div key={feature} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '15px', color: 'var(--text-muted)' }}>
+                <CheckCircle2 size={18} color="var(--primary)" />
+                {feature}
+              </div>
+            ))}
+          </div>
+
+          {isTrial && (
+            <div style={{ padding: '24px', borderRadius: '16px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)' }}>
+              <h3 style={{ fontWeight: 700, fontSize: '16px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Lock size={16} color="var(--primary)" />
+                Activate your subscription
+              </h3>
+              <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+                Your trial will expire soon. Secure your store data by activating your plan today.
+              </p>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => handleSandboxPayment('MTN MoMo')}
+                  disabled={paying}
+                  style={{ flex: 1, minWidth: '120px', background: '#ffcc00', color: '#000', fontWeight: 700, padding: '14px 20px', borderRadius: '10px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  {paying ? <Loader2 size={18} className="spin" /> : 'Pay via MTN MoMo'}
+                </button>
+                <button
+                  onClick={() => handleSandboxPayment('Airtel Money')}
+                  disabled={paying}
+                  style={{ flex: 1, minWidth: '120px', background: '#e60000', color: '#fff', fontWeight: 700, padding: '14px 20px', borderRadius: '10px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  {paying ? <Loader2 size={18} className="spin" /> : 'Pay via Airtel'}
+                </button>
+              </div>
+              <p style={{ marginTop: '16px', textAlign: 'center', fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
+                Test Sandbox Mode
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Right Col: History */}
-        <div className="bg-[#16181d] border border-white/5 rounded-3xl p-6 h-fit">
-          <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-            <CalendarDays size={20} className="text-white/50" /> Billing History
+        {/* Billing History */}
+        <div className="glass-panel" style={{ padding: '28px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <CalendarDays size={20} color="var(--text-muted)" />
+            Billing History
           </h3>
-          <div className="space-y-4">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {data?.history?.length === 0 ? (
-              <p className="text-sm text-white/40 text-center py-8">No billing events yet.</p>
+              <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0', fontSize: '14px' }}>
+                No billing events yet.
+              </p>
             ) : (
-              data?.history?.map((evt: any) => {
-                const badgeClass = evt.status === 'POSTED'
-                  ? 'bg-emerald-500/20 text-emerald-400'
-                  : 'bg-yellow-500/20 text-yellow-500';
-                return (
-                  <div key={evt.id} className="p-4 rounded-xl bg-white/5 border border-white/5 flex flex-col gap-2">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-sm">{evt.event_type.replace('_', ' ')}</span>
-                      <span className={'text-xs font-bold px-2 py-1 rounded ' + badgeClass}>{evt.status}</span>
-                    </div>
-                    <div className="text-xl font-bold">ZMW {Number(evt.amount).toLocaleString()}</div>
-                    <div className="text-xs text-white/40">{new Date(evt.due_at || evt.effective_at).toLocaleDateString()}</div>
+              data?.history?.map((evt: any) => (
+                <div key={evt.id} style={{ padding: '16px 20px', borderRadius: '12px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 600, fontSize: '14px' }}>
+                      {evt.event_type.replace(/_/g, ' ')}
+                    </span>
+                    <span style={{
+                      fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '20px',
+                      background: evt.status === 'POSTED' ? 'var(--primary-glow)' : 'rgba(245,158,11,0.15)',
+                      color: evt.status === 'POSTED' ? 'var(--primary)' : 'var(--warning)',
+                    }}>
+                      {evt.status}
+                    </span>
                   </div>
-                );
-              })
+                  <div style={{ fontSize: '20px', fontWeight: 700 }}>ZMW {Number(evt.amount).toLocaleString()}</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                    {new Date(evt.due_at || evt.effective_at).toLocaleDateString('en-ZM', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
