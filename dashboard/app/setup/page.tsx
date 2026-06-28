@@ -432,7 +432,14 @@ export default function SetupWizard() {
 
 // Reusable Components
 
-function InputField({ label, value, onChange, placeholder, type = "text", maxLength }: any) {
+function InputField({ label, value, onChange, placeholder, type = "text", maxLength }: {
+  label: string;
+  value: string | number;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  type?: string;
+  maxLength?: number;
+}) {
   return (
     <div className="space-y-2 w-full">
       <label className="block text-sm font-semibold text-white/70">{label}</label>
@@ -461,7 +468,16 @@ function ActionButton({ saving, onClick, label = 'Save & Continue' }: { saving: 
   );
 }
 
-function ProviderToggle({ title, desc, logo, color, checked, value, onCheck, onValue }: any) {
+function ProviderToggle({ title, desc, logo, color, checked, value, onCheck, onValue }: {
+  title: string;
+  desc: string;
+  logo: string;
+  color: string;
+  checked: boolean;
+  value: string;
+  onCheck: (c: boolean) => void;
+  onValue: (v: string) => void;
+}) {
   return (
     <div className={`p-5 rounded-2xl border transition-all duration-300 ${checked ? 'bg-[#16181d] border-emerald-500/30' : 'bg-white/5 border-white/5'}`}>
       <div className="flex items-start gap-4 mb-4">
