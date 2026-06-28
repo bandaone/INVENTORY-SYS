@@ -3,14 +3,16 @@ import { Pool } from 'pg';
 // IMPORTANT: The app uses the RESTRICTED role (retail_os_app), NOT the table owner (retail_os).
 // PostgreSQL bypasses RLS for the table owner by default. Using retail_os_app ensures
 // RLS policies are enforced for every query, providing true tenant isolation.
-const appConnectionString =
-  process.env.APP_DATABASE_URL ||
-  'postgresql://retail_os_app:retail_os_app_password@postgres:5432/retail_os_dev';
-
-// Admin pool (table owner) — ONLY for super-admin operations and cross-tenant queries
+// Admin connection string — required in production
 const adminConnectionString =
   process.env.DATABASE_URL ||
   'postgresql://retail_os:retail_os_dev_password@postgres:5432/retail_os_dev';
+
+// Tenant-scoped connection — falls back to DATABASE_URL if APP_DATABASE_URL not set
+const appConnectionString =
+  process.env.APP_DATABASE_URL ||
+  process.env.DATABASE_URL ||
+  'postgresql://retail_os_app:retail_os_app_password@postgres:5432/retail_os_dev';
 
 // Tenant-scoped pool — uses restricted user, RLS applies
 export const pool = new Pool({ 
