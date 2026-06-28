@@ -3,6 +3,8 @@ import { ThemeProvider } from '@/components/ThemeProvider'
 
 import { PostHogProvider } from '@/providers/PostHogProvider'
 
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: 'Retail OS | Owner Dashboard',
   description: 'Physical retail operating system dashboard',
