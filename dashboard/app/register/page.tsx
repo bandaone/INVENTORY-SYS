@@ -1,7 +1,6 @@
 'use client';
-
 import { useState } from 'react';
-import { Store, Loader2, CheckCircle2, ChevronRight, Sparkles, ShieldCheck, Clock, BarChart3 } from 'lucide-react';
+import { Hexagon, CheckCircle2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function PublicRegistration() {
@@ -34,132 +33,110 @@ export default function PublicRegistration() {
     setLoading(false);
   };
 
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '14px 16px',
+    border: '1px solid var(--panel-border)',
+    background: 'var(--bg-color)', color: 'var(--text-main)',
+    borderRadius: '8px', fontFamily: 'Outfit, sans-serif',
+    fontSize: '15px', outline: 'none', boxSizing: 'border-box',
+    transition: 'border-color 0.2s',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block', marginBottom: '8px', 
+    fontSize: '13px', fontWeight: 600, 
+    color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em'
+  };
+
   if (step === 2) {
     return (
-      <main className="min-h-screen bg-[#0a0a0b] text-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-[#16181d] border border-white/10 p-10 rounded-3xl text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-32 bg-emerald-500/10 blur-[50px] pointer-events-none" />
-          
-          <div className="relative z-10">
-            <div className="w-20 h-20 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle2 size={40} />
-            </div>
-            
-            <h2 className="text-3xl font-extrabold mb-3">Workspace Created!</h2>
-            <p className="text-white/60 mb-2 leading-relaxed">
-              Your 5-day free trial is now active.
-            </p>
-            <p className="text-white/40 text-sm mb-8">
-              Next, we will walk you through setting up your store profile, adding your first products, and configuring your payment methods.
-            </p>
-            
-            <button 
-              onClick={() => router.push('/setup')}
-              className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              Continue to Store Setup <ChevronRight size={20} />
-            </button>
-          </div>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-color)', fontFamily: 'Outfit, sans-serif', padding: '20px' }}>
+        <div className="glass-panel" style={{ maxWidth: '480px', padding: '48px 40px', textAlign: 'center', width: '100%' }}>
+          <CheckCircle2 size={56} color="var(--primary)" style={{ margin: '0 auto 24px' }} />
+          <h2 style={{ fontSize: '28px', color: 'var(--text-main)', marginBottom: '12px' }}>Workspace Created!</h2>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '32px', lineHeight: 1.6, fontSize: '15px' }}>
+            Your 5-day free trial is now active. Next, we will walk you through setting up your store profile, adding products, and configuring ZRA compliance.
+          </p>
+          <button 
+            onClick={() => router.push('/setup')}
+            style={{ display: 'inline-block', width: '100%', padding: '16px 32px', background: 'var(--primary)', color: '#0f1115', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '16px', cursor: 'pointer', fontFamily: 'Outfit, sans-serif' }}
+          >
+            Continue to Store Setup
+          </button>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0a0b] text-white flex flex-col lg:flex-row">
-      {/* Left Panel - Brand & Value */}
-      <div className="lg:w-[45%] bg-[#0f1115] border-b lg:border-b-0 lg:border-r border-white/5 p-8 lg:p-12 flex flex-col justify-between relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-72 h-72 bg-emerald-500/5 blur-[100px] rounded-full pointer-events-none" />
-        
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 text-emerald-400 font-bold text-lg mb-10 lg:mb-16">
-            <Sparkles size={22} /> Retail OS
-          </div>
-
-          <h1 className="text-3xl lg:text-4xl font-black mb-4 leading-tight tracking-tight">
-            Run your shop smarter, from anywhere.
-          </h1>
-          <p className="text-base lg:text-lg text-white/50 leading-relaxed mb-8 lg:mb-12">
-            Retail OS gives you real-time stock control, cashier management, and daily sales reports — built for how business works in Zambia.
-          </p>
-
-          {/* Feature highlights instead of oversized SVG */}
-          <div className="space-y-5 mb-8">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
-                <BarChart3 size={18} className="text-emerald-400" />
-              </div>
-              <div>
-                <p className="font-semibold text-sm text-white/90">Live Sales Dashboard</p>
-                <p className="text-xs text-white/40">Track daily revenue and top-selling products across all your branches.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center flex-shrink-0">
-                <ShieldCheck size={18} className="text-indigo-400" />
-              </div>
-              <div>
-                <p className="font-semibold text-sm text-white/90">ZRA-Ready Receipting</p>
-                <p className="text-xs text-white/40">Generate tax-compliant receipts with your TPIN automatically included.</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0">
-                <Clock size={18} className="text-amber-400" />
-              </div>
-              <div>
-                <p className="font-semibold text-sm text-white/90">Get Started in Minutes</p>
-                <p className="text-xs text-white/40">No hardware needed. Sign up, add your products, and start selling today.</p>
-              </div>
-            </div>
-          </div>
+    <div style={{ minHeight: '100vh', display: 'flex', flexWrap: 'wrap', background: 'var(--bg-color)', color: 'var(--text-main)', fontFamily: 'Outfit, sans-serif' }}>
+      
+      {/* Left side info */}
+      <div style={{ flex: '1 1 400px', padding: '80px 60px', background: 'var(--sidebar-bg)', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--panel-border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '80px' }}>
+          <Hexagon size={32} color="var(--primary)" />
+          <span style={{ fontSize: '24px', fontWeight: 700 }}>Retail OS</span>
         </div>
-
-        <div className="relative z-10 pt-4 border-t border-white/5">
-          <p className="text-xs text-white/30">No card required to start your trial. Cancel any time.</p>
+        
+        <h1 style={{ fontSize: '42px', fontWeight: 700, marginBottom: '24px', lineHeight: 1.15 }}>
+          Run your shop smarter,<br />from anywhere.
+        </h1>
+        <p style={{ fontSize: '18px', color: 'var(--text-muted)', maxWidth: '420px', lineHeight: 1.6, marginBottom: '40px' }}>
+          Retail OS gives you real-time stock control, cashier management, and daily sales reports — built for how business works in Zambia.
+        </p>
+        
+        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-muted)' }}>
+            <CheckCircle2 size={20} color="var(--primary)" />
+            <span>No credit card required to start</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-muted)' }}>
+            <CheckCircle2 size={20} color="var(--primary)" />
+            <span>Setup takes less than 2 minutes</span>
+          </div>
         </div>
       </div>
 
-      {/* Right Panel - Form */}
-      <div className="flex-1 flex flex-col justify-center items-center p-8 lg:p-12">
-        <div className="w-full max-w-md">
+      {/* Right side form */}
+      <div style={{ flex: '1 1 500px', padding: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="glass-panel" style={{ width: '100%', maxWidth: '520px', padding: '40px' }}>
+          <h2 style={{ fontSize: '28px', marginBottom: '8px' }}>Create your store</h2>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '32px', fontSize: '15px' }}>
+            Fill in a few details and your workspace will be ready in seconds.
+          </p>
           
-          <div className="mb-8">
-            <h2 className="text-2xl font-extrabold mb-2">Create your store</h2>
-            <p className="text-white/50 text-sm">Fill in a few details and your workspace will be ready in seconds.</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-white/60 uppercase tracking-wide">Business Name</label>
-                <input required name="business_name" type="text" placeholder="Mwape General Trading" className="w-full bg-[#16181d] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all" />
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+              <div>
+                <label style={labelStyle}>Business Name</label>
+                <input required name="business_name" type="text" placeholder="Mwape General Trading" style={inputStyle} />
               </div>
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-white/60 uppercase tracking-wide">Owner Full Name</label>
-                <input required name="owner_name" type="text" placeholder="Mwila Chanda" className="w-full bg-[#16181d] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all" />
+              <div>
+                <label style={labelStyle}>Owner Full Name</label>
+                <input required name="owner_name" type="text" placeholder="Mwila Chanda" style={inputStyle} />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-white/60 uppercase tracking-wide">Phone Number</label>
-                <input required name="phone" type="tel" placeholder="0977 123 456" className="w-full bg-[#16181d] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+              <div>
+                <label style={labelStyle}>Phone Number</label>
+                <input required name="phone" type="tel" placeholder="0977 123 456" style={inputStyle} />
               </div>
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-white/60 uppercase tracking-wide">Email Address</label>
-                <input required name="email" type="email" placeholder="mwila@mwapetrading.co.zm" className="w-full bg-[#16181d] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all" />
+              <div>
+                <label style={labelStyle}>Email Address</label>
+                <input required name="email" type="email" placeholder="mwila@mwapetrading.co.zm" style={inputStyle} />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-white/60 uppercase tracking-wide">Store Address</label>
-              <input required name="address" type="text" placeholder="Plot 42, Cairo Road, Lusaka" className="w-full bg-[#16181d] border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all" />
+            <div>
+              <label style={labelStyle}>Store Address</label>
+              <input required name="address" type="text" placeholder="Plot 42, Cairo Road, Lusaka" style={inputStyle} />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-white/60 uppercase tracking-wide">Plan</label>
-              <select required name="tier" className="w-full bg-[#16181d] border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all appearance-none cursor-pointer">
+            <div>
+              <label style={labelStyle}>Plan</label>
+              <select required name="tier" style={{...inputStyle, cursor: 'pointer', appearance: 'none'}}>
                 <option value="boutique_starter">Starter — 1 Location — ZMW 2,500/mo</option>
                 <option value="growth">Growth — Up to 5 Locations — ZMW 3,500/mo</option>
                 <option value="enterprise_fleet">Enterprise — Unlimited Locations — ZMW 9,500/mo</option>
@@ -167,19 +144,25 @@ export default function PublicRegistration() {
             </div>
 
             <button 
+              disabled={loading} 
               type="submit" 
-              disabled={loading}
-              className="w-full mt-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
+              style={{ 
+                marginTop: '12px', width: '100%', padding: '16px', 
+                background: 'var(--primary)', color: '#0f1115', 
+                border: 'none', borderRadius: '8px', fontWeight: 700, 
+                fontSize: '16px', cursor: loading ? 'not-allowed' : 'pointer',
+                fontFamily: 'Outfit, sans-serif'
+              }}
             >
-              {loading ? <Loader2 className="animate-spin w-5 h-5" /> : 'Start Free Trial'}
+              {loading ? 'Provisioning Workspace...' : 'Start Free Trial'}
             </button>
-
-            <p className="text-center text-xs text-white/30 mt-4">
-              Already have an account? <a href="/login" className="text-emerald-400 hover:underline">Sign in</a>
+            
+            <p style={{ textAlign: 'center', fontSize: '14px', color: 'var(--text-muted)', marginTop: '8px' }}>
+              Already have an account? <a href="/login" style={{ color: 'var(--primary)', textDecoration: 'none' }}>Sign in</a>
             </p>
           </form>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
