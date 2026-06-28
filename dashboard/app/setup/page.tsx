@@ -16,7 +16,7 @@ import {
   Users,
   Sparkles,
 } from 'lucide-react';
-import { SetupIllustration } from '@/components/Illustrations';
+
 
 type OnboardingData = {
   session: Record<string, any> | null;
@@ -28,13 +28,13 @@ type OnboardingData = {
 };
 
 const steps = [
-  { key: 'business', title: 'Business Profile', desc: 'Tell us about your brand', icon: Building2, field: 'business_profile_completed' },
-  { key: 'location', title: 'First Location', desc: 'Where are you located?', icon: Store, field: 'location_created' },
-  { key: 'team', title: 'Team Setup', desc: 'Add your first cashier', icon: Users, field: 'staff_created' },
-  { key: 'catalog', title: 'First Product', desc: 'Start building your inventory', icon: Boxes, field: 'products_loaded' },
-  { key: 'payments', title: 'Mobile Money', desc: 'Set up automated collections', icon: Banknote, field: 'hardware_paired' },
-  { key: 'tax', title: 'ZRA Compliance', desc: 'Smart invoice integration', icon: ShieldCheck, field: 'first_stock_received' },
-  { key: 'launch', title: 'Go Live', desc: 'You are ready for business', icon: BadgeCheck, field: 'go_live_approved' },
+  { key: 'business', title: 'Business Profile', desc: 'Your store identity and contact details', icon: Building2, field: 'business_profile_completed' },
+  { key: 'location', title: 'Store Location', desc: 'Where customers find you', icon: Store, field: 'location_created' },
+  { key: 'team', title: 'Staff Access', desc: 'Set up POS login for your team', icon: Users, field: 'staff_created' },
+  { key: 'catalog', title: 'First Product', desc: 'Add an item to your inventory', icon: Boxes, field: 'products_loaded' },
+  { key: 'payments', title: 'Mobile Money', desc: 'MTN and Airtel merchant wallets', icon: Banknote, field: 'hardware_paired' },
+  { key: 'tax', title: 'ZRA Compliance', desc: 'TPIN and Smart Invoice setup', icon: ShieldCheck, field: 'first_stock_received' },
+  { key: 'launch', title: 'Go Live', desc: 'Open your store for business', icon: BadgeCheck, field: 'go_live_approved' },
 ];
 
 export default function SetupWizard() {
@@ -156,9 +156,8 @@ export default function SetupWizard() {
           <div className="mb-10">
             <h2 className="text-2xl font-bold mb-2">Welcome aboard!</h2>
             <p className="text-white/50 text-sm leading-relaxed">
-              Let's get your store set up and ready to process sales. This will only take a few minutes.
+              Complete these steps to configure your store. Each section saves automatically so you can come back any time.
             </p>
-            <SetupIllustration />
           </div>
 
           <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-8">
@@ -251,10 +250,10 @@ export default function SetupWizard() {
               {active === 'business' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <InputField label="Store / Business Name" value={business.business_name} onChange={(e) => setBusiness({ ...business, business_name: e.target.value })} placeholder="e.g. Lusaka Fashion House" />
-                    <InputField label="Owner Email" type="email" value={business.owner_email} onChange={(e) => setBusiness({ ...business, owner_email: e.target.value })} placeholder="owner@store.com" />
+                    <InputField label="Store / Business Name" value={business.business_name} onChange={(e) => setBusiness({ ...business, business_name: e.target.value })} placeholder="Mwape General Trading" />
+                    <InputField label="Owner Email" type="email" value={business.owner_email} onChange={(e) => setBusiness({ ...business, owner_email: e.target.value })} placeholder="mwape@trading.co.zm" />
                   </div>
-                  <InputField label="Owner Phone Number" value={business.owner_phone} onChange={(e) => setBusiness({ ...business, owner_phone: e.target.value })} placeholder="+260 97 ..." />
+                  <InputField label="Owner Phone Number" value={business.owner_phone} onChange={(e) => setBusiness({ ...business, owner_phone: e.target.value })} placeholder="0977 123 456" />
                   <InputField label="Receipt Footer Message" value={business.business_name ? `Thank you for shopping at ${business.business_name}!` : business.receipt_footer} onChange={(e) => setBusiness({ ...business, receipt_footer: e.target.value })} />
                   
                   <div className="pt-4">
@@ -268,8 +267,8 @@ export default function SetupWizard() {
                   <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm mb-4">
                     <strong>Pro tip:</strong> Start with your main headquarters. You can easily add more branch locations later from your dashboard.
                   </div>
-                  <InputField label="Location Name" value={location.name} onChange={(e) => setLocation({ ...location, name: e.target.value })} placeholder="e.g. Manda Hill Branch" />
-                  <InputField label="Physical Address" value={location.address} onChange={(e) => setLocation({ ...location, address: e.target.value })} placeholder="Shop 42, Great East Road..." />
+                  <InputField label="Location Name" value={location.name} onChange={(e) => setLocation({ ...location, name: e.target.value })} placeholder="Main Branch — Manda Hill" />
+                  <InputField label="Physical Address" value={location.address} onChange={(e) => setLocation({ ...location, address: e.target.value })} placeholder="Shop 12, Manda Hill Mall, Lusaka" />
                   
                   <div className="pt-4">
                     <ActionButton saving={saving} onClick={() => save('location', location)} />
@@ -280,8 +279,8 @@ export default function SetupWizard() {
               {active === 'team' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <InputField label="Staff Full Name" value={team.name} onChange={(e) => setTeam({ ...team, name: e.target.value })} placeholder="John Doe" />
-                    <InputField label="Email (Optional)" type="email" value={team.email} onChange={(e) => setTeam({ ...team, email: e.target.value })} placeholder="john@store.com" />
+                    <InputField label="Staff Full Name" value={team.name} onChange={(e) => setTeam({ ...team, name: e.target.value })} placeholder="Bwalya Mutale" />
+                    <InputField label="Email (Optional)" type="email" value={team.email} onChange={(e) => setTeam({ ...team, email: e.target.value })} placeholder="bwalya@yourstore.co.zm" />
                     
                     <div className="space-y-2">
                       <label className="block text-sm font-semibold text-white/70">Role</label>
@@ -318,12 +317,12 @@ export default function SetupWizard() {
                     Add your first product to see how the POS looks. You can bulk-import hundreds of products later using Excel.
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <InputField label="Product Name" value={catalog.product_name} onChange={(e) => setCatalog({ ...catalog, product_name: e.target.value })} placeholder="e.g. Classic White T-Shirt" />
-                    <InputField label="Category" value={catalog.category} onChange={(e) => setCatalog({ ...catalog, category: e.target.value })} placeholder="Clothing" />
-                    <InputField label="Color (Optional)" value={catalog.color} onChange={(e) => setCatalog({ ...catalog, color: e.target.value })} placeholder="White" />
-                    <InputField label="Size (Optional)" value={catalog.size} onChange={(e) => setCatalog({ ...catalog, size: e.target.value })} placeholder="M" />
+                    <InputField label="Product Name" value={catalog.product_name} onChange={(e) => setCatalog({ ...catalog, product_name: e.target.value })} placeholder="Chitenge Fabric — 6 Yards" />
+                    <InputField label="Category" value={catalog.category} onChange={(e) => setCatalog({ ...catalog, category: e.target.value })} placeholder="Fabrics" />
+                    <InputField label="Color (Optional)" value={catalog.color} onChange={(e) => setCatalog({ ...catalog, color: e.target.value })} placeholder="Green & Gold" />
+                    <InputField label="Size (Optional)" value={catalog.size} onChange={(e) => setCatalog({ ...catalog, size: e.target.value })} placeholder="6 yds" />
                   </div>
-                  <InputField label="Retail Price (ZMW)" type="number" value={catalog.retail_price} onChange={(e) => setCatalog({ ...catalog, retail_price: e.target.value })} placeholder="150" />
+                  <InputField label="Retail Price (ZMW)" type="number" value={catalog.retail_price} onChange={(e) => setCatalog({ ...catalog, retail_price: e.target.value })} placeholder="250" />
                   
                   <div className="pt-4 flex items-center justify-between">
                     <ActionButton saving={saving} label={catalog.product_name ? 'Save Product' : 'Skip & Continue'} onClick={() => save('catalog', catalog)} />
@@ -383,7 +382,7 @@ export default function SetupWizard() {
 
                       {tax.zra_enabled && (
                         <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                          <InputField label="Company TPIN" value={tax.zra_tpin} onChange={(e) => setTax({ ...tax, zra_tpin: e.target.value })} placeholder="100..." />
+                          <InputField label="Company TPIN" value={tax.zra_tpin} onChange={(e) => setTax({ ...tax, zra_tpin: e.target.value })} placeholder="1001234567" />
                         </div>
                       )}
                     </div>

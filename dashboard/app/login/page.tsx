@@ -77,7 +77,7 @@ export default function LoginPage() {
               autoComplete="username"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="e.g. owner@mystore.com"
+              placeholder="you@yourbusiness.co.zm"
               required
               style={inputStyle}
             />
