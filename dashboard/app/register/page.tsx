@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Store, Loader2, CheckCircle2, ChevronRight, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { DashboardIllustration } from '@/components/Illustrations';
 
 export default function PublicRegistration() {
   const [step, setStep] = useState(1);
@@ -79,6 +80,7 @@ export default function PublicRegistration() {
           <p className="text-xl text-white/50 leading-relaxed max-w-md">
             Start your 5-day trial with clean stock intake, cashier workflows, owner reporting, and guided tax readiness.
           </p>
+          <DashboardIllustration />
         </div>
 
         <div className="relative z-10 space-y-6">

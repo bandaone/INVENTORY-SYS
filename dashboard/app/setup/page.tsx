@@ -16,6 +16,7 @@ import {
   Users,
   Sparkles,
 } from 'lucide-react';
+import { SetupIllustration } from '@/components/Illustrations';
 
 type OnboardingData = {
   session: Record<string, any> | null;
@@ -157,6 +158,7 @@ export default function SetupWizard() {
             <p className="text-white/50 text-sm leading-relaxed">
               Let's get your store set up and ready to process sales. This will only take a few minutes.
             </p>
+            <SetupIllustration />
           </div>
 
           <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-8">
