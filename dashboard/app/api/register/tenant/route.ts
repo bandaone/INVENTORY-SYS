@@ -28,10 +28,13 @@ export async function POST(req: Request) {
     `, [tenantId, 'Main Store', address]);
 
     // 3. Create Owner Staff Record (with mocked 1234 PIN for testing)
-    await fetchQuery(`
+    const staffRes = await fetchQuery(`
       INSERT INTO staff (tenant_id, name, email, role, pin_hash)
       VALUES ($1, $2, $3, 'owner', '1234')
+      RETURNING id
     `, [tenantId, owner_name, email]);
+    
+    const staffId = staffRes[0].id;
 
     await fetchQuery(`
       INSERT INTO tenant_settings (
@@ -84,6 +87,7 @@ export async function POST(req: Request) {
       maxAge: 60 * 60 * 24 * 7,
     };
     cookies().set('tenant_id', tenantId, cookieOptions);
+    cookies().set('staff_id', staffId, cookieOptions);
     cookies().set('tenant_name', business_name, cookieOptions);
     cookies().set('staff_name', owner_name, cookieOptions);
     cookies().set('staff_role', 'owner', cookieOptions);
