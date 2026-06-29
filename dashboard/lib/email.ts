@@ -1,15 +1,21 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
-// Initialize the Resend SDK. It automatically picks up process.env.RESEND_API_KEY
-const resend = new Resend(process.env.RESEND_API_KEY);
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
 
-// Use onboarding@resend.dev for testing if you haven't verified a domain yet
-const FROM_EMAIL = process.env.NEXT_PUBLIC_FROM_EMAIL || 'onboarding@resend.dev';
+const FROM_EMAIL = process.env.NEXT_PUBLIC_FROM_EMAIL || process.env.SMTP_USER || 'noreply@retailos.app';
 
 export async function sendWelcomeEmail(to: string, ownerName: string) {
   try {
-    const data = await resend.emails.send({
-      from: `Retail OS <${FROM_EMAIL}>`,
+    const data = await transporter.sendMail({
+      from: `"Retail OS" <${FROM_EMAIL}>`,
       to,
       subject: 'Welcome to Retail OS! 🚀',
       html: `
@@ -35,8 +41,8 @@ export async function sendWelcomeEmail(to: string, ownerName: string) {
 
 export async function sendTrialReminderEmail(to: string, ownerName: string, daysLeft: number) {
   try {
-    const data = await resend.emails.send({
-      from: `Retail OS Billing <${FROM_EMAIL}>`,
+    const data = await transporter.sendMail({
+      from: `"Retail OS Billing" <${FROM_EMAIL}>`,
       to,
       subject: `Action Required: ${daysLeft} Days Left in Trial ⏰`,
       html: `
@@ -60,8 +66,8 @@ export async function sendTrialReminderEmail(to: string, ownerName: string, days
 
 export async function sendDigitalReceiptEmail(to: string, receiptData: any) {
   try {
-    const data = await resend.emails.send({
-      from: `Retail OS Receipts <${FROM_EMAIL}>`,
+    const data = await transporter.sendMail({
+      from: `"${receiptData.businessName}" <${FROM_EMAIL}>`,
       to,
       subject: `Your Receipt from ${receiptData.businessName} (#${receiptData.receiptNum})`,
       html: `
