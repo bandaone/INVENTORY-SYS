@@ -22,7 +22,7 @@ interface Variant {
   display_variant?: string;
   barcode?: string | null;
 }
-interface CartItem { id: string; variant_id: string; name: string; price: number; quantity: number; discount_percent: number; }
+interface CartItem { id: string; variant_id: string; name: string; size: string | null; color: string | null; price: number; quantity: number; discount_percent: number; }
 interface Session { staffName: string; staffRole: string; tenantName: string; locationName: string; }
 interface LocationOption { id: string; name: string; }
 interface ReturnLookupItem {
@@ -146,6 +146,8 @@ export default function POSPage() {
         id: crypto.randomUUID(),
         variant_id: variantId,
         name: v.name,
+        size: v.size || null,
+        color: v.color || null,
         price: Number(v.retail_price),
         quantity: 1,
         discount_percent: Number(v.discount_percent || 0),
@@ -396,15 +398,37 @@ export default function POSPage() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: '12px' }}>
           {catalog.map(v => (
-            <button key={v.id} onClick={() => addToCart(v)}
-              style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '16px 12px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.15s, transform 0.1s', fontFamily: 'Outfit' }}
+          <button key={v.id} onClick={() => addToCart(v)}
+              style={{ background: 'var(--panel-bg)', border: '1px solid var(--panel-border)', borderRadius: '12px', padding: '14px 12px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.15s, transform 0.1s', fontFamily: 'Outfit', display: 'flex', flexDirection: 'column', gap: 0 }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--panel-border)'; e.currentTarget.style.transform = 'none'; }}>
               <div style={{ width: '40px', height: '40px', background: 'rgba(74,222,128,0.12)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
                 <Package size={20} color="var(--primary)" />
               </div>
-              <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '4px', color: 'var(--text-main)', lineHeight: 1.3 }}>{v.name}</div>
-              <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '15px' }}>K{Number(v.retail_price).toFixed(2)}</div>
+              <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '6px', color: 'var(--text-main)', lineHeight: 1.3 }}>{v.name}</div>
+
+              {/* Size + Color badges */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
+                {v.size && (
+                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-main)', letterSpacing: '0.04em' }}>
+                    {v.size}
+                  </span>
+                )}
+                {v.color && (
+                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-muted)' }}>
+                    {v.color}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '15px' }}>K{Number(v.retail_price).toFixed(2)}</div>
+                {typeof v.available_count === 'number' && (
+                  <div style={{ fontSize: '11px', color: v.available_count < 3 ? 'var(--warning)' : 'var(--text-muted)', fontWeight: 600 }}>
+                    {v.available_count} left
+                  </div>
+                )}
+              </div>
             </button>
           ))}
           {catalog.length === 0 && (
@@ -439,7 +463,22 @@ export default function POSPage() {
           ) : cart.map(item => (
             <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--panel-border)' }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '6px' }}>{item.name}</div>
+                <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '4px' }}>{item.name}</div>
+                {/* Size / Color in cart */}
+                {(item.size || item.color) && (
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                    {item.size && (
+                      <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-main)' }}>
+                        {item.size}
+                      </span>
+                    )}
+                    {item.color && (
+                      <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-muted)' }}>
+                        {item.color}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', fontSize: '12px', color: 'var(--text-muted)' }}>
                   {item.discount_percent > 0 ? (
                     <>
