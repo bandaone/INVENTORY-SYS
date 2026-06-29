@@ -5,6 +5,8 @@ import { QRCodeSVG } from 'qrcode.react';
 
 export interface ReceiptItem {
   name: string;
+  size?: string | null;
+  color?: string | null;
   price: number;
   quantity: number;
   discountPercent?: number;
@@ -185,6 +187,13 @@ export default function ReceiptPrint({ storeName, footerMessage, receipt, onPrin
           <span style={{ width: '24px', textAlign: 'left' }}>{item.quantity}</span>
           <span style={{ flex: 1, paddingRight: '6px', wordBreak: 'break-word', lineHeight: '1.2' }}>
             {item.name} {receipt.taxRatePercent > 0 ? '(A)' : '(E)'}
+            
+            {(item.size || item.color) && (
+              <div style={{ fontSize: '7pt', color: '#555', marginTop: '1px' }}>
+                [{[item.size, item.color].filter(Boolean).join(' - ')}]
+              </div>
+            )}
+
             {item.quantity > 1 && (
               <div style={{ fontSize: '7pt', color: '#444', marginTop: '2px' }}>
                 @ K{Number(item.price).toFixed(2)}

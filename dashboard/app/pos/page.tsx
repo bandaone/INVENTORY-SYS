@@ -217,6 +217,8 @@ export default function POSPage() {
           zraEnabled: data.zraEnabled,
           items: cart.map(i => ({
             name: i.name,
+            size: i.size,
+            color: i.color,
             price: i.price * (1 - (i.discount_percent || 0) / 100),
             quantity: i.quantity,
             discountPercent: i.discount_percent,
