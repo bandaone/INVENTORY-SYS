@@ -189,8 +189,11 @@ export default function ReceiptPrint({ storeName, footerMessage, receipt, onPrin
             {item.name} {receipt.zraEnabled ? (receipt.taxRatePercent > 0 ? ' (A)' : ' (E)') : ''}
             
             {(item.size || item.color) && (
-              <div style={{ fontSize: '7pt', color: '#555', marginTop: '1px' }}>
-                [{[item.size, item.color].filter(Boolean).join(' - ')}]
+              <div style={{ fontSize: '7pt', color: '#555', marginTop: '1px', fontStyle: 'italic' }}>
+                {[
+                  item.size && `Size: ${item.size}`,
+                  item.color && `Color: ${item.color}`
+                ].filter(Boolean).join(' | ')}
               </div>
             )}
 
