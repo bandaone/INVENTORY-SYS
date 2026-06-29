@@ -192,7 +192,7 @@ export default function ReceiptPrint({ storeName, footerMessage, receipt, onPrin
               <div style={{ fontSize: '7pt', color: '#555', marginTop: '1px', fontStyle: 'italic' }}>
                 {[
                   item.size && `Size: ${item.size}`,
-                  item.color && `Color: ${item.color}`
+                  item.color && `Color: ${item.color.replace(/\\s*\\([^)]*\\)/g, '').trim()}`
                 ].filter(Boolean).join(' | ')}
               </div>
             )}

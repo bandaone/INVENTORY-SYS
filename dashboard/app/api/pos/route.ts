@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     const staffId = cookieStore.get('staff_id')?.value;
     if (!tenantId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { cart, method, location_id } = await req.json();
+    const { cart, method, location_id, customer_email } = await req.json();
 
     if (!cart || cart.length === 0) {
       return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
@@ -211,6 +211,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: e.message || 'Transaction failed' }, { status: 400 });
     } finally {
       client.release();
+    }
+
+    if (customer_email) {
+      // Fire and forget email
+      import('@/lib/email').then(({ sendDigitalReceiptEmail }) => {
+        sendDigitalReceiptEmail(customer_email, {
+          receiptNum: receiptNum,
+          total,
+          method,
+          receiptFooter,
+          businessName,
+          items: cartPricing
+        }).catch(e => console.error("Receipt email failed", e));
+      });
     }
 
     return NextResponse.json({ 

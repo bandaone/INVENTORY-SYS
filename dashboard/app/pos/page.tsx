@@ -62,6 +62,7 @@ export default function POSPage() {
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [receiptFooter, setReceiptFooter] = useState('Thank you for your business!');
   const [amountTenderedStr, setAmountTenderedStr] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [shiftTime, setShiftTime] = useState('00:00:00');
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState('');
@@ -194,6 +195,7 @@ export default function POSPage() {
           cart: cart.map(i => ({ variant_id: i.variant_id, name: i.name, price: i.price, quantity: i.quantity, discount_percent: i.discount_percent })),
           method,
           location_id: selectedLocationId || undefined,
+          customer_email: customerEmail.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -233,6 +235,7 @@ export default function POSPage() {
         });
         setCart([]);
         setAmountTenderedStr('');
+        setCustomerEmail('');
       } else {
         alert(data.error || 'Checkout failed');
       }
@@ -538,7 +541,18 @@ export default function POSPage() {
               value={amountTenderedStr} 
               onChange={e => setAmountTenderedStr(e.target.value)}
               placeholder="Enter amount given..." 
-              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'var(--bg-color)', color: 'var(--text-main)', fontSize: '16px' }} 
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'var(--bg-color)', color: 'var(--text-main)', fontSize: '16px', fontFamily: 'Outfit' }} 
+            />
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>Email Receipt (Optional)</label>
+            <input 
+              type="email" 
+              value={customerEmail} 
+              onChange={e => setCustomerEmail(e.target.value)}
+              placeholder="customer@email.com" 
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'var(--bg-color)', color: 'var(--text-main)', fontSize: '14px', fontFamily: 'Outfit' }} 
             />
           </div>
 
