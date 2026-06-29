@@ -214,17 +214,22 @@ export async function POST(req: Request) {
     }
 
     if (customer_email) {
-      // Fire and forget email
-      import('@/lib/email').then(({ sendDigitalReceiptEmail }) => {
-        sendDigitalReceiptEmail(customer_email, {
+      try {
+        const { sendDigitalReceiptEmail } = await import('@/lib/email');
+        const emailResult = await sendDigitalReceiptEmail(customer_email, {
           receiptNum: receiptNum,
           total,
           method,
           receiptFooter,
           businessName,
           items: cartPricing
-        }).catch(e => console.error("Receipt email failed", e));
-      });
+        });
+        if (!emailResult.success) {
+          console.error("Resend API rejected the email:", emailResult.error);
+        }
+      } catch (e) {
+        console.error("Receipt email failed critically:", e);
+      }
     }
 
     return NextResponse.json({ 
