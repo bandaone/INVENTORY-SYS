@@ -186,7 +186,7 @@ export default function ReceiptPrint({ storeName, footerMessage, receipt, onPrin
         <div key={idx} className="r-block" style={{ marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <span style={{ width: '24px', textAlign: 'left' }}>{item.quantity}</span>
           <span style={{ flex: 1, paddingRight: '6px', wordBreak: 'break-word', lineHeight: '1.2' }}>
-            {item.name} {receipt.taxRatePercent > 0 ? '(A)' : '(E)'}
+            {item.name} {receipt.zraEnabled ? (receipt.taxRatePercent > 0 ? ' (A)' : ' (E)') : ''}
             
             {(item.size || item.color) && (
               <div style={{ fontSize: '7pt', color: '#555', marginTop: '1px' }}>
