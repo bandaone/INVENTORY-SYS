@@ -26,6 +26,9 @@ interface Settings {
   airtel_number: string;
   zra_enabled: boolean;
   zra_tpin: string;
+  zra_vsdc_url: string;
+  zra_bhf_id: string;
+  zra_dvc_srl_no: string;
 }
 
 interface TenantInfo {
@@ -47,6 +50,8 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [zraInitializing, setZraInitializing] = useState(false);
+  const [zraInitSuccess, setZraInitSuccess] = useState('');
   
   const [tenant, setTenant] = useState<TenantInfo | null>(null);
   const [billingHistory, setBillingHistory] = useState<BillingEvent[]>([]);
@@ -64,7 +69,7 @@ export default function SettingsPage() {
     receipt_logo_data_url: '',
     mtn_momo_enabled: false, mtn_momo_number: '',
     airtel_enabled: false, airtel_number: '',
-    zra_enabled: false, zra_tpin: ''
+    zra_enabled: false, zra_tpin: '', zra_vsdc_url: '', zra_bhf_id: '000', zra_dvc_srl_no: ''
   });
 
   useEffect(() => {
@@ -80,7 +85,10 @@ export default function SettingsPage() {
           receipt_logo_data_url: settingsData.settings.receipt_logo_data_url || '',
           mtn_momo_number: settingsData.settings.mtn_momo_number || '',
           airtel_number: settingsData.settings.airtel_number || '',
-          zra_tpin: settingsData.settings.zra_tpin || ''
+          zra_tpin: settingsData.settings.zra_tpin || '',
+          zra_vsdc_url: settingsData.settings.zra_vsdc_url || '',
+          zra_bhf_id: settingsData.settings.zra_bhf_id || '000',
+          zra_dvc_srl_no: settingsData.settings.zra_dvc_srl_no || ''
         }));
       }
       if (settingsData.tenant) setTenant(settingsData.tenant);
@@ -130,6 +138,35 @@ export default function SettingsPage() {
       setError('Network error occurred.');
     }
     setAddingLocation(false);
+  };
+
+  const handleInitializeZra = async () => {
+    setZraInitializing(true);
+    setError('');
+    setZraInitSuccess('');
+    try {
+      const res = await fetch('/api/zra/initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tpin: form.zra_tpin,
+          bhfId: form.zra_bhf_id,
+          dvcSrlNo: form.zra_dvc_srl_no,
+          vsdcUrl: form.zra_vsdc_url
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setZraInitSuccess('Connected! VSDC Keys synchronized successfully.');
+        setForm(f => ({ ...f, zra_enabled: true })); // Ensure enabled is active on successful init
+      } else {
+        setError(`ZRA Init Failed: ${data.error}. ${data.hint || ''}`);
+        setForm(f => ({ ...f, zra_enabled: false })); // Force disable if connection fails
+      }
+    } catch (err) {
+      setError('Network error connecting to ZRA Init API.');
+    }
+    setZraInitializing(false);
   };
 
   const readLogoFile = (file: File) =>
@@ -382,21 +419,57 @@ export default function SettingsPage() {
                 )}
               </div>
 
-              {/* ZRA */}
+              {/* ZRA SMART INVOICE */}
               <div style={{ padding: '16px', background: 'var(--hover-bg)', borderRadius: '12px', border: '1px solid var(--panel-border)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: form.zra_enabled ? '16px' : '0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: '14px' }}>ZRA Smart Invoice</div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{form.zra_enabled ? 'Active — submitting to VSDC' : 'Disabled'}</div>
+                    <div style={{ fontWeight: 600, fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <ShieldCheck size={16} color="var(--primary)" />
+                      ZRA Smart Invoice (VSDC)
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      {form.zra_enabled ? 'Active — Fully Certified' : 'Not Connected'}
+                    </div>
                   </div>
                   <ToggleSwitch id="zra_enabled" enabled={form.zra_enabled} onChange={v => setForm(f => ({ ...f, zra_enabled: v }))} />
                 </div>
-                {form.zra_enabled && (
-                  <div>
-                    <label style={labelStyle}>ZRA TPIN *</label>
-                    <input style={inputStyle} value={form.zra_tpin} onChange={e => setForm(f => ({ ...f, zra_tpin: e.target.value }))} placeholder="Your ZRA Taxpayer PIN" />
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>TPIN *</label>
+                      <input style={inputStyle} value={form.zra_tpin} onChange={e => setForm(f => ({ ...f, zra_tpin: e.target.value }))} placeholder="10-digit TPIN" maxLength={10} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Branch ID (bhfId) *</label>
+                      <input style={inputStyle} value={form.zra_bhf_id} onChange={e => setForm(f => ({ ...f, zra_bhf_id: e.target.value }))} placeholder="e.g. 000" />
+                    </div>
                   </div>
-                )}
+
+                  <div>
+                    <label style={labelStyle}>Device Serial Number *</label>
+                    <input style={inputStyle} value={form.zra_dvc_srl_no} onChange={e => setForm(f => ({ ...f, zra_dvc_srl_no: e.target.value }))} placeholder="Assigned by ZRA" />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Local VSDC Server URL *</label>
+                    <input style={inputStyle} value={form.zra_vsdc_url} onChange={e => setForm(f => ({ ...f, zra_vsdc_url: e.target.value }))} placeholder="e.g. http://192.168.1.50:8080" />
+                  </div>
+
+                  {zraInitSuccess && <div style={{ fontSize: '13px', color: 'var(--primary)', fontWeight: 500, padding: '8px', background: 'rgba(74,222,128,0.1)', borderRadius: '6px' }}>✓ {zraInitSuccess}</div>}
+
+                  <button 
+                    onClick={handleInitializeZra} 
+                    disabled={zraInitializing || !form.zra_tpin || !form.zra_dvc_srl_no || !form.zra_vsdc_url}
+                    style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', gap: '8px', padding: '12px', background: 'var(--bg-color)', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: '8px', fontWeight: 600, cursor: (zraInitializing || !form.zra_tpin || !form.zra_dvc_srl_no || !form.zra_vsdc_url) ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}
+                  >
+                    {zraInitializing ? <Loader2 size={16} className="spin" /> : <Zap size={16} />}
+                    {zraInitializing ? 'Connecting to VSDC...' : 'Test Connection & Initialize'}
+                  </button>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', lineHeight: '1.4' }}>
+                    Initializes cryptographic keys with ZRA. Your VSDC server must be running and accessible from this app's network to activate.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

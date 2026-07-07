@@ -41,6 +41,7 @@ export async function POST(req: Request) {
       missing_fields,
       detail_status,
       search_text,
+      zra_tax_ty_cd,
     } = await req.json();
 
     if (!name?.trim()) return NextResponse.json({ error: 'Product name is required' }, { status: 400 });
@@ -53,8 +54,8 @@ export async function POST(req: Request) {
     const nextDiscountPercent = Number.isFinite(Number(discount_percent)) ? Math.max(0, Math.min(100, Number(discount_percent))) : 0;
 
     const rows = await fetchTenantQuery(tenantId, `
-      INSERT INTO variants (tenant_id, name, category, subtype, color, size, cost_price, retail_price, discount_percent, barcode_token, barcode_payload, metadata, missing_fields, detail_status, search_text)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      INSERT INTO variants (tenant_id, name, category, subtype, color, size, cost_price, retail_price, discount_percent, barcode_token, barcode_payload, metadata, missing_fields, detail_status, search_text, zra_tax_ty_cd)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *
     `, [
       tenantId, 
@@ -72,9 +73,28 @@ export async function POST(req: Request) {
       JSON.stringify(missing_fields || []),
       detail_status || 'complete',
       search_text?.trim() || null,
+      zra_tax_ty_cd || 'A'
     ]);
 
-    return NextResponse.json({ success: true, variant: rows[0] });
+    const variant = rows[0];
+
+    // Background: If ZRA is enabled, sync this new item to the VSDC
+    fetchTenantQuery(tenantId, 'SELECT zra_enabled, zra_tpin, zra_bhf_id, zra_vsdc_url FROM tenant_settings WHERE tenant_id=$1', [tenantId])
+      .then(async (settings) => {
+        const s = settings[0];
+        if (s?.zra_enabled && s?.zra_vsdc_url) {
+          const { syncItem } = await import('@/lib/zra');
+          await syncItem({ tpin: s.zra_tpin, bhfId: s.zra_bhf_id, vsdcUrl: s.zra_vsdc_url, dvcSrlNo: '', lastInvcNo: 0 }, {
+            itemCd: variant.id,
+            itemNm: variant.name + (variant.color ? ` ${variant.color}` : '') + (variant.size ? ` ${variant.size}` : ''),
+            prc: variant.retail_price,
+            taxTyCd: variant.zra_tax_ty_cd as any
+          });
+        }
+      })
+      .catch(e => console.error('[ZRA Catalog Sync Failed]', e));
+
+    return NextResponse.json({ success: true, variant });
   } catch (err: any) {
     if (err.code === '23505') { // Postgres Unique violation code
       return NextResponse.json({ error: 'This exact product (name + color + size) already exists.' }, { status: 409 });

@@ -33,7 +33,7 @@ export default function ReceivePage() {
   const [quantity, setQuantity] = useState(1);
 
   // New product form
-  const [newProd, setNewProd] = useState({ name: '', color: '', size: '', cost_price: '', retail_price: '' });
+  const [newProd, setNewProd] = useState({ name: '', color: '', size: '', cost_price: '', retail_price: '', zra_tax_ty_cd: 'A' });
   
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -104,7 +104,8 @@ export default function ReceivePage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: newProd.name, color: newProd.color, size: newProd.size,
-            cost_price: Number(newProd.cost_price), retail_price: Number(newProd.retail_price)
+            cost_price: Number(newProd.cost_price), retail_price: Number(newProd.retail_price),
+            zra_tax_ty_cd: newProd.zra_tax_ty_cd
           })
         });
         const catData = await catRes.json();
@@ -139,7 +140,7 @@ export default function ReceivePage() {
         setPrintLabels(recData.labels);
         // Reset forms
         setIsNewProduct(false);
-        setNewProd({ name: '', color: '', size: '', cost_price: '', retail_price: '' });
+        setNewProd({ name: '', color: '', size: '', cost_price: '', retail_price: '', zra_tax_ty_cd: 'A' });
         setQuantity(1);
       }
 
@@ -242,6 +243,19 @@ export default function ReceivePage() {
                   <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>Retail Price (K) *</label>
                   <input type="number" min="0" step="0.01" value={newProd.retail_price} onChange={e => setNewProd({...newProd, retail_price: e.target.value})} placeholder="0.00" style={{ width: '100%', padding: '10px 12px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-main)', borderRadius: '8px', fontFamily: 'Outfit' }} />
                 </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>ZRA Tax Classification (Compliance) *</label>
+                <select 
+                  value={newProd.zra_tax_ty_cd} 
+                  onChange={e => setNewProd({...newProd, zra_tax_ty_cd: e.target.value})}
+                  style={{ width: '100%', padding: '10px 12px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-main)', borderRadius: '8px', fontFamily: 'Outfit', cursor: 'pointer', appearance: 'none' }}
+                >
+                  <option value="A">Standard Rate (16% VAT)</option>
+                  <option value="C3">Zero Rated (0% VAT)</option>
+                  <option value="D">Exempt</option>
+                </select>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Most retail items should be Standard Rate (16%). Use Zero Rated only for qualified zero-rated goods.</div>
               </div>
             </div>
           )}
