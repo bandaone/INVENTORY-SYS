@@ -217,6 +217,10 @@ export default function POSPage() {
           receiptLogoDataUrl: data.receiptLogoDataUrl || null,
           zraTpin: data.zraTpin,
           zraEnabled: data.zraEnabled,
+          zraRcptNo:    data.zraRcptNo    || '',
+          zraIntrlData: data.zraIntrlData || '',
+          zraMrcNo:     data.zraMrcNo     || '',
+          zraQueued:    data.zraQueued    || false,
           items: cart.map(i => ({
             name: i.name,
             size: i.size,

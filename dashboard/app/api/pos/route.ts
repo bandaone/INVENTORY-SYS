@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     }
 
     // Calculate totals using the tenant's configured tax rate (Inclusive Tax Calculation)
-    const settings = await fetchTenantQuery(tenantId, `SELECT tax_rate, receipt_footer, receipt_logo_data_url, business_name, owner_phone, zra_tpin, zra_enabled, currency FROM tenant_settings WHERE tenant_id = '${tenantId}'`).catch(() => []);
+    const settings = await fetchTenantQuery(tenantId, `SELECT tax_rate, receipt_footer, receipt_logo_data_url, business_name, owner_phone, zra_tpin, zra_enabled, zra_vsdc_url, zra_bhf_id, zra_dvc_srl_no, zra_last_invc_no, currency FROM tenant_settings WHERE tenant_id = '${tenantId}'`).catch(() => []);
     const taxRate = settings[0]?.tax_rate ? Number(settings[0].tax_rate) / 100 : 0.16;
     const taxRatePercent = settings[0]?.tax_rate ? Number(settings[0].tax_rate) : 16;
     const receiptFooter = settings[0]?.receipt_footer || 'Thank you for your business!';
@@ -63,6 +63,9 @@ export async function POST(req: Request) {
     const businessPhone = settings[0]?.owner_phone || '';
     const zraTpin = settings[0]?.zra_tpin || '';
     const zraEnabled = settings[0]?.zra_enabled || false;
+    const zraVsdcUrl  = settings[0]?.zra_vsdc_url || '';
+    const zraBhfId    = settings[0]?.zra_bhf_id || '000';
+    const zraDvcSrlNo = settings[0]?.zra_dvc_srl_no || '';
 
     const variantIds = Array.from(new Set((cart as CartItem[]).map(item => item.variant_id).filter(Boolean)));
     if (variantIds.length !== (cart as CartItem[]).length) {
@@ -213,6 +216,52 @@ export async function POST(req: Request) {
       client.release();
     }
 
+    // ── ZRA Smart Invoice Submission ─────────────────────────────────────
+    let zraRcptNo    = '';
+    let zraIntrlData = '';
+    let zraMrcNo     = '';
+    let zraQueued    = false;
+
+    if (zraEnabled && zraVsdcUrl && zraTpin) {
+      try {
+        const { submitSale, getNextInvoiceNo } = await import('@/lib/zra');
+        const invcNo = await getNextInvoiceNo(tenantId);
+        const salesDt = new Date().toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+
+        const zraItems = cartPricing.map(item => {
+          const variant = variantsById.get(item.variant_id);
+          return {
+            itemCd:   variant?.zra_item_cd || '',
+            itemNm:   item.name,
+            qty:      item.quantity,
+            prc:      item.unitPrice,
+            taxTyCd:  (variant?.zra_tax_ty_cd || 'A') as 'A' | 'B' | 'E',
+            dcRt:     item.discountPercent,
+            dcAmt:    item.discountAmount * item.quantity,
+          };
+        });
+
+        const zraResult = await submitSale(
+          { tpin: zraTpin, bhfId: zraBhfId, vsdcUrl: zraVsdcUrl, dvcSrlNo: zraDvcSrlNo, lastInvcNo: 0 },
+          tenantId,
+          txId,
+          { invcNo, paymentMethod: method, salesDt, items: zraItems }
+        );
+
+        if (zraResult.success) {
+          zraRcptNo    = zraResult.rcptNo    || '';
+          zraIntrlData = zraResult.intrlData || '';
+          zraMrcNo     = zraResult.mrcNo     || '';
+        } else {
+          zraQueued = zraResult.queued || false;
+          console.warn('[ZRA] Submission failed/queued:', zraResult.error);
+        }
+      } catch (zraErr: any) {
+        console.error('[ZRA] Fatal error during submission:', zraErr.message);
+        zraQueued = true;
+      }
+    }
+
     if (customer_email) {
       try {
         const { sendDigitalReceiptEmail } = await import('@/lib/email');
@@ -225,10 +274,10 @@ export async function POST(req: Request) {
           items: cartPricing
         });
         if (!emailResult.success) {
-          console.error("Resend API rejected the email:", emailResult.error);
+          console.error('Email delivery error:', emailResult.error);
         }
       } catch (e) {
-        console.error("Receipt email failed critically:", e);
+        console.error('Receipt email failed critically:', e);
       }
     }
 
@@ -246,7 +295,11 @@ export async function POST(req: Request) {
       businessName,
       businessPhone,
       zraTpin,
-      zraEnabled
+      zraEnabled,
+      zraRcptNo,
+      zraIntrlData,
+      zraMrcNo,
+      zraQueued,
     });
   } catch (error) {
     console.error('[POS Checkout Error]', error);

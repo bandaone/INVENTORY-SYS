@@ -26,6 +26,10 @@ export interface ReceiptData {
   receiptLogoDataUrl?: string | null;
   zraTpin: string;
   zraEnabled: boolean;
+  zraRcptNo?: string;
+  zraIntrlData?: string;
+  zraMrcNo?: string;
+  zraQueued?: boolean;
   items: ReceiptItem[];
   payment_method: string;
   cashierName: string;
@@ -147,9 +151,9 @@ export default function ReceiptPrint({ storeName, footerMessage, receipt, onPrin
         <div className="r-xlarge">{(receipt.businessName || storeName).toUpperCase()}</div>
         {receipt.locationName && <div className="r-small">{receipt.locationName}</div>}
         {receipt.businessPhone && <div className="r-small">Tel: {receipt.businessPhone}</div>}
-        {receipt.zraTpin && (
-          <div className="r-small r-bold">TPIN: {receipt.zraTpin}</div>
-        )}
+      {receipt.zraTpin && (
+        <div className="r-small r-bold">TPIN: {receipt.zraTpin}</div>
+      )}
       </div>
 
       <div className="r-solid" />
@@ -255,6 +259,43 @@ export default function ReceiptPrint({ storeName, footerMessage, receipt, onPrin
       </div>
 
       <div className="r-solid" />
+
+      {/* ── ZRA SMART INVOICE ── */}
+      {receipt.zraEnabled && (
+        <>
+          <div className="r-center r-block">
+            <div className="r-small r-bold" style={{ letterSpacing: '0.06em', marginBottom: '3px' }}>
+              *** ZRA SMART INVOICE ***
+            </div>
+            {receipt.zraRcptNo && (
+              <div className="r-row r-small">
+                <span>ZRA Receipt No:</span>
+                <span className="r-bold">{receipt.zraRcptNo}</span>
+              </div>
+            )}
+            {receipt.zraMrcNo && (
+              <div className="r-row r-small">
+                <span>MRC:</span>
+                <span>{receipt.zraMrcNo}</span>
+              </div>
+            )}
+            {receipt.zraQueued && (
+              <div className="r-small" style={{ color: '#777', marginTop: '2px' }}>
+                [ZRA sync pending — will update automatically]
+              </div>
+            )}
+            {receipt.zraIntrlData && (
+              <div className="r-qr" style={{ marginTop: '6px' }}>
+                <QRCodeSVG value={receipt.zraIntrlData} size={80} />
+              </div>
+            )}
+            <div className="r-small" style={{ color: '#666', marginTop: '3px' }}>
+              Scan QR to verify at zra.org.zm
+            </div>
+          </div>
+          <div className="r-solid" />
+        </>
+      )}
 
       {/* ── FOOTER ── */}
       <div className="r-center r-block" style={{ marginTop: '6px' }}>
