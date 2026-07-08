@@ -51,6 +51,7 @@ export default async function SuperAdminOverview() {
     supportRows,
     lifecycleRows,
     complianceRows,
+    zraSyncRows,
     recentIssues,
   ] = await Promise.all([
     fetchQuery(`
@@ -126,13 +127,17 @@ export default async function SuperAdminOverview() {
     `),
     fetchQuery(`
       SELECT
-        COUNT(*) FILTER (WHERE zra_configured = TRUE)::int AS zra_ready,
-        COUNT(*) FILTER (
-          WHERE zra_cert_expiry IS NOT NULL
-            AND zra_cert_expiry <= NOW() + INTERVAL '30 days'
-        )::int AS expiring_soon,
-        COUNT(*) FILTER (WHERE zra_configured = FALSE)::int AS missing_zra
-      FROM tenants
+        COUNT(*) FILTER (WHERE zra_enabled = TRUE AND zra_vsdc_url IS NOT NULL AND zra_vsdc_url != '')::int AS zra_ready,
+        COUNT(*) FILTER (WHERE zra_enabled = FALSE AND zra_tpin IS NOT NULL AND zra_tpin != '')::int AS configured_not_activated,
+        COUNT(*) FILTER (WHERE zra_tpin IS NULL OR zra_tpin = '')::int AS missing_zra
+      FROM tenant_settings
+    `),
+    fetchQuery(`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'pending')::int AS zra_pending_syncs,
+        COUNT(*) FILTER (WHERE status = 'failed')::int AS zra_failed_syncs,
+        COUNT(DISTINCT tenant_id) FILTER (WHERE status IN ('pending','failed'))::int AS tenants_affected
+      FROM zra_sync_queue
     `),
     fetchQuery(`
       SELECT *
@@ -184,6 +189,8 @@ export default async function SuperAdminOverview() {
   const billing = billingRows[0] ?? {};
   const health = healthRows[0] ?? null;
   const support = supportRows[0] ?? { open_tickets: 0, urgent_tickets: 0 };
+  const zraCompliance = complianceRows[0] ?? { zra_ready: 0, configured_not_activated: 0, missing_zra: 0 };
+  const zraSyncQueue = zraSyncRows[0] ?? { zra_pending_syncs: 0, zra_failed_syncs: 0, tenants_affected: 0 };
   const derivedHealth = {
     api_uptime_pct: health?.api_uptime_pct ?? 99.99,
     error_rate_pct: health?.error_rate_pct ?? 0,
@@ -262,10 +269,16 @@ export default async function SuperAdminOverview() {
           tone={Number(support.urgent_tickets || 0) > 0 ? 'warning' : 'primary'}
         />
         <OwnerMetricCard
-          label="Compliance"
-          value={formatCount(complianceRows[0]?.zra_ready || 0)}
-          note={`${formatCount(complianceRows[0]?.expiring_soon || 0)} expiring soon · ${formatCount(complianceRows[0]?.missing_zra || 0)} missing setup`}
-          tone="secondary"
+          label="ZRA Active"
+          value={formatCount(zraCompliance.zra_ready)}
+          note={`${formatCount(zraCompliance.configured_not_activated)} setup but inactive · ${formatCount(zraCompliance.missing_zra)} no ZRA at all`}
+          tone={Number(zraCompliance.missing_zra) > 0 ? 'warning' : 'primary'}
+        />
+        <OwnerMetricCard
+          label="ZRA Sync Queue"
+          value={formatCount(zraSyncQueue.zra_pending_syncs)}
+          note={`${formatCount(zraSyncQueue.zra_failed_syncs)} failed · ${formatCount(zraSyncQueue.tenants_affected)} shops affected`}
+          tone={Number(zraSyncQueue.zra_failed_syncs) > 0 ? 'danger' : Number(zraSyncQueue.zra_pending_syncs) > 0 ? 'warning' : 'primary'}
         />
       </section>
 

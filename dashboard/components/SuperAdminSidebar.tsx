@@ -83,6 +83,14 @@ export default function SuperAdminSidebar() {
             </>
           )}
         </button>
+        <button onClick={() => {
+          document.cookie = 'tenant_id=; Max-Age=0; path=/';
+          document.cookie = 'staff_role=; Max-Age=0; path=/';
+          document.cookie = 'staff_name=; Max-Age=0; path=/';
+          window.location.href = '/login';
+        }} style={{ width: '100%', marginTop: '8px', padding: '12px 16px', background: 'var(--panel-border)', border: 'none', borderRadius: '10px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+          Log Out
+        </button>
       </div>
     </aside>
   );
