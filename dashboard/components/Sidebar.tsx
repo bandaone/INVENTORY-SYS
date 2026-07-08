@@ -18,7 +18,6 @@ const ALL_NAV = [
   { name: 'Overview',        path: '/',          icon: LayoutDashboard, roles: ['owner'] },
   { name: 'Inventory',       path: '/inventory',  icon: Package,         roles: ['owner'] },
   { name: 'Audit Trail',     path: '/audit',      icon: History,         roles: ['owner'] },
-  { name: 'Sync Monitoring', path: '/conflicts',  icon: AlertTriangle,   roles: ['owner'] },
   { name: 'Staff',           path: '/staff',      icon: Users,           roles: ['owner'] },
   { name: 'Subscription',    path: '/subscription', icon: CreditCard,    roles: ['owner'] },
   { name: 'Settings',        path: '/settings',   icon: Settings,        roles: ['owner'] },
