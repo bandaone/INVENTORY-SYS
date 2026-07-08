@@ -14,7 +14,8 @@ import {
   UserCog,
   Hexagon,
   Sun,
-  Moon
+  Moon,
+  LogOut
 } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 
@@ -30,7 +31,7 @@ export default function SuperAdminSidebar() {
         Retail OS
       </div>
 
-      <div className="tenant-selector" style={{ cursor: 'default', marginBottom: '24px' }}>
+      <div className="tenant-selector" style={{ cursor: 'default', marginBottom: '24px', position: 'relative' }}>
         <div className="tenant-icon" style={{ background: 'rgba(59, 130, 246, 0.1)', color: 'var(--secondary)' }}>
           <ShieldCheck size={16} />
         </div>
@@ -38,6 +39,24 @@ export default function SuperAdminSidebar() {
           <span className="tenant-name">Retail OS HQ</span>
           <span className="tenant-tier">System Management</span>
         </div>
+        <button 
+          onClick={() => {
+            document.cookie = 'tenant_id=; Max-Age=0; path=/';
+            document.cookie = 'staff_role=; Max-Age=0; path=/';
+            document.cookie = 'staff_name=; Max-Age=0; path=/';
+            window.location.href = '/login';
+          }}
+          title="Log Out"
+          style={{ 
+            background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', 
+            padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.2s', marginLeft: 'auto'
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+        >
+          <LogOut size={16} />
+        </button>
       </div>
 
       <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
@@ -84,13 +103,6 @@ export default function SuperAdminSidebar() {
             </>
           )}
         </button>
-        <button onClick={() => {
-          document.cookie = 'tenant_id=; Max-Age=0; path=/';
-          document.cookie = 'staff_role=; Max-Age=0; path=/';
-          document.cookie = 'staff_name=; Max-Age=0; path=/';
-          window.location.href = '/login';
-        }} style={{ width: '100%', marginTop: '8px', padding: '12px 16px', background: 'var(--panel-border)', border: 'none', borderRadius: '10px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
-          Log Out
         </button>
       </div>
     </aside>

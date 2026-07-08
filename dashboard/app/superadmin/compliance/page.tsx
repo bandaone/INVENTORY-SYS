@@ -8,40 +8,39 @@ export default async function CompliancePage() {
   const [summaryRows, tenantRows, conflictRows, failedLoginRows] = await Promise.all([
     fetchQuery(`
       SELECT
-        COUNT(*) FILTER (WHERE COALESCE(zra_configured, FALSE) = TRUE)::int AS zra_ready,
-        COUNT(*) FILTER (WHERE COALESCE(zra_configured, FALSE) = FALSE)::int AS zra_missing,
-        COUNT(*) FILTER (
-          WHERE zra_cert_expiry IS NOT NULL
-            AND zra_cert_expiry <= NOW() + INTERVAL '30 days'
-        )::int AS certs_expiring_soon,
-        COUNT(*) FILTER (WHERE COALESCE(UPPER(status), 'ACTIVE') = 'SUSPENDED')::int AS suspended
-      FROM tenants
+        COUNT(t.id) FILTER (WHERE ts.zra_enabled = TRUE)::int AS zra_ready,
+        COUNT(t.id) FILTER (WHERE COALESCE(ts.zra_enabled, FALSE) = FALSE)::int AS zra_missing,
+        COUNT(t.id) FILTER (WHERE ts.zra_enabled = TRUE AND (ts.zra_vsdc_url IS NULL OR ts.zra_vsdc_url = ''))::int AS certs_expiring_soon,
+        COUNT(t.id) FILTER (WHERE COALESCE(UPPER(t.status), 'ACTIVE') = 'SUSPENDED')::int AS suspended
+      FROM tenants t
+      LEFT JOIN tenant_settings ts ON ts.tenant_id = t.id
     `),
     fetchQuery(`
       SELECT
-        id,
-        name,
-        COALESCE(UPPER(status), 'ACTIVE') AS safe_status,
-        COALESCE(zra_configured, FALSE) AS zra_configured,
-        zra_cert_expiry,
-        created_at
-      FROM tenants
-      WHERE COALESCE(zra_configured, FALSE) = FALSE
-         OR (zra_cert_expiry IS NOT NULL AND zra_cert_expiry <= NOW() + INTERVAL '30 days')
-      ORDER BY COALESCE(zra_cert_expiry, created_at) ASC
+        t.id,
+        t.name,
+        COALESCE(UPPER(t.status), 'ACTIVE') AS safe_status,
+        COALESCE(ts.zra_enabled, FALSE) AS zra_configured,
+        ts.zra_vsdc_url,
+        t.created_at
+      FROM tenants t
+      LEFT JOIN tenant_settings ts ON ts.tenant_id = t.id
+      WHERE COALESCE(ts.zra_enabled, FALSE) = FALSE
+         OR (ts.zra_enabled = TRUE AND (ts.zra_vsdc_url IS NULL OR ts.zra_vsdc_url = ''))
+      ORDER BY t.created_at ASC
       LIMIT 12
     `),
     fetchQuery(`
       SELECT
-        tenant_id,
+        q.tenant_id,
         t.name,
-        COUNT(*) FILTER (WHERE resolution IS NULL)::int AS unresolved,
-        COUNT(*) FILTER (WHERE resolution IS NOT NULL)::int AS resolved,
-        MAX(sync_conflicts.created_at) AS latest_at
-      FROM sync_conflicts
-      LEFT JOIN tenants t ON t.id = sync_conflicts.tenant_id
-      GROUP BY tenant_id, t.name
-      HAVING COUNT(*) FILTER (WHERE resolution IS NULL) > 0
+        COUNT(q.id) FILTER (WHERE q.status = 'PENDING')::int AS unresolved,
+        COUNT(q.id) FILTER (WHERE q.status = 'COMPLETED')::int AS resolved,
+        MAX(q.created_at) AS latest_at
+      FROM zra_sync_queue q
+      LEFT JOIN tenants t ON t.id = q.tenant_id
+      GROUP BY q.tenant_id, t.name
+      HAVING COUNT(q.id) FILTER (WHERE q.status = 'PENDING') > 0
       ORDER BY latest_at DESC
       LIMIT 10
     `),
@@ -72,9 +71,9 @@ export default async function CompliancePage() {
       </div>
 
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '18px' }}>
-        <OwnerMetricCard label="ZRA ready" value={formatCount(summary.zra_ready)} note="Configured and visible to the platform" tone="primary" />
+        <OwnerMetricCard label="ZRA ready" value={formatCount(summary.zra_ready)} note="Configured and active for VSDC sync" tone="primary" />
         <OwnerMetricCard label="ZRA missing" value={formatCount(summary.zra_missing)} note="Needs tax setup attention" tone="warning" />
-        <OwnerMetricCard label="Certs expiring soon" value={formatCount(summary.certs_expiring_soon)} note="Expiring within 30 days" tone="warning" />
+        <OwnerMetricCard label="VSDC Config Missing" value={formatCount(summary.certs_expiring_soon)} note="Enabled but missing credentials" tone="warning" />
         <OwnerMetricCard label="Suspended tenants" value={formatCount(summary.suspended)} note="Platform status restrictions" tone="secondary" />
       </section>
 
@@ -92,7 +91,7 @@ export default async function CompliancePage() {
                     <OwnerBadge tone={row.zra_configured ? 'primary' : 'warning'}>{row.zra_configured ? 'READY' : 'MISSING'}</OwnerBadge>
                   </td>
                   <td style={{ padding: '14px 12px', color: 'var(--text-muted)' }}>
-                    {row.zra_cert_expiry ? formatDateTime(row.zra_cert_expiry) : '—'}
+                    {row.zra_configured ? (row.zra_vsdc_url ? 'Configured' : 'Missing URL') : '—'}
                   </td>
                   <td style={{ padding: '14px 12px', color: 'var(--text-muted)' }}>{formatDate(row.created_at)}</td>
                 </tr>
@@ -111,7 +110,7 @@ export default async function CompliancePage() {
                   <div>
                     <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>{row.name || row.tenant_id}</div>
                     <div style={{ marginTop: '4px', fontSize: '12px', color: 'var(--text-muted)' }}>
-                      {formatCount(row.unresolved)} unresolved conflict(s)
+                      {formatCount(row.unresolved)} pending offline invoice(s)
                     </div>
                   </div>
                   <OwnerBadge tone="warning">{formatDateTime(row.latest_at)}</OwnerBadge>
