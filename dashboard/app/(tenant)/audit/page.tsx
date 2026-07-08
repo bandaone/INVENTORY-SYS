@@ -61,7 +61,7 @@ export default async function AuditPage() {
   return (
     <div className="animate-fade-in">
       <h1>Audit Trail</h1>
-      <p className="subtitle">Immutable system logs fetched live from PostgreSQL DB.</p>
+      <p className="subtitle">Comprehensive security and operational event logs.</p>
 
       <div className="glass-panel" style={{ marginTop: '32px' }}>
         <table className="data-table">

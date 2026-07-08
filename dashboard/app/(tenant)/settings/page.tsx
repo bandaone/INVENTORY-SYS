@@ -219,7 +219,7 @@ export default function SettingsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1>System Settings</h1>
-          <p className="subtitle">Configure your store environment. All changes save directly to the database.</p>
+          <p className="subtitle">Manage your store preferences and operational settings.</p>
         </div>
         <button onClick={handleSave} disabled={saving} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--primary)', color: '#0f1115', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 14px rgba(74,222,128,0.2)' }}>
           {saving ? <><Loader2 size={16} className="spin" /> Saving...</> : saved ? <><CheckCircle2 size={16} /> Saved!</> : <><Save size={16} /> Save Changes</>}

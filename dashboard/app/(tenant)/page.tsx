@@ -91,7 +91,7 @@ export default async function DashboardPage() {
   return (
     <div className="animate-fade-in" style={{ paddingBottom: '40px' }}>
       <h1>Overview</h1>
-      <p className="subtitle">Live metrics pulled directly from PostgreSQL database.</p>
+      <p className="subtitle">Real-time analytics and performance metrics.</p>
 
       {/* ── Metric Cards ── */}
       <div className="metrics-grid">

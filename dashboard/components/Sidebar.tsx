@@ -67,7 +67,7 @@ export default function Sidebar({
       </div>
 
       {/* User profile */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'var(--hover-bg)', borderRadius: '10px', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'var(--hover-bg)', borderRadius: '10px', marginBottom: '24px', position: 'relative' }}>
         <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: badge.color + '22', border: `2px solid ${badge.color}`, color: badge.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '13px', flexShrink: 0 }}>
           {initials}
         </div>
@@ -75,6 +75,19 @@ export default function Sidebar({
           <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{staffName}</div>
           <div style={{ fontSize: '11px', color: badge.color, fontWeight: 600, marginTop: '1px' }}>{badge.label}</div>
         </div>
+        <button 
+          onClick={handleLogout}
+          title="Log Out"
+          style={{ 
+            background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', 
+            padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.2s'
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+        >
+          <LogOut size={16} />
+        </button>
       </div>
 
       {/* Navigation */}
@@ -95,11 +108,6 @@ export default function Sidebar({
       <div style={{ paddingBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <button onClick={toggleTheme} className="theme-toggle-btn">
           {theme === 'dark' ? <><Sun size={16} /> Light Mode</> : <><Moon size={16} /> Dark Mode</>}
-        </button>
-        <button onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', background: 'transparent', border: '1px solid var(--panel-border)', color: 'var(--danger)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 500, width: '100%', fontFamily: 'inherit', transition: 'background 0.15s' }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.08)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-          <LogOut size={15} /> End Session
         </button>
       </div>
     </aside>
