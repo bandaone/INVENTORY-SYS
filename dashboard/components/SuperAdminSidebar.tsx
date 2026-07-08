@@ -15,7 +15,8 @@ import {
   Hexagon,
   Sun,
   Moon,
-  LogOut
+  LogOut,
+  CreditCard
 } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 
@@ -65,6 +66,7 @@ export default function SuperAdminSidebar() {
           { href: '/superadmin/revenue', label: 'Revenue', icon: LineChart },
           { href: '/superadmin/tenants', label: 'Tenants', icon: Building2 },
           { href: '/superadmin/onboarding', label: 'Onboarding', icon: PlusCircle },
+          { href: '/superadmin/pricing', label: 'Plans & Pricing', icon: CreditCard },
           { href: '/superadmin/health', label: 'Platform Health', icon: Activity },
           { href: '/superadmin/compliance', label: 'Compliance', icon: ShieldCheck },
           { href: '/superadmin/support', label: 'Support', icon: LifeBuoy },
