@@ -166,7 +166,7 @@ export default function LoginPage() {
             {/* PIN boxes */}
             <div>
               <label style={label}>4-Digit Security PIN</label>
-              <div style={{ display: 'flex', gap: 10 }} onPaste={handlePinPaste}>
+              <div style={{ display: 'flex', gap: 10, width: '100%', overflow: 'hidden' }} onPaste={handlePinPaste}>
                 {[0,1,2,3].map(i => (
                   <input
                     key={i}
@@ -179,7 +179,8 @@ export default function LoginPage() {
                     onKeyDown={e => handlePinKey(i, e)}
                     autoComplete="new-password"
                     style={{
-                      flex: 1,
+                      flex: '1 1 0%',
+                      minWidth: 0,
                       height: 56,
                       border: `1.5px solid ${pin[i] ? '#1d4ed8' : '#e2e8f0'}`,
                       borderRadius: 10,
@@ -193,6 +194,7 @@ export default function LoginPage() {
                       caretColor: 'transparent',
                       boxSizing: 'border-box',
                       transition: 'border-color 0.15s, background 0.15s',
+                      padding: 0,
                     }}
                     onFocus={e  => { e.target.style.borderColor = '#2563eb'; e.target.style.boxShadow = '0 0 0 3px rgba(37,99,235,0.12)'; }}
                     onBlur={e   => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = pin[i] ? '#1d4ed8' : '#e2e8f0'; }}
