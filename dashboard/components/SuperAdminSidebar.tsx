@@ -22,6 +22,7 @@ export default function SuperAdminSidebar() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
 
+  // Vercel deployment test trigger
   return (
     <aside className="sidebar" style={{ width: '260px', padding: '24px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--panel-border)' }}>
       <div className="sidebar-logo" style={{ marginBottom: '24px' }}>
