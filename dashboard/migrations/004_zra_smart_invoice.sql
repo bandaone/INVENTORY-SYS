@@ -1,6 +1,5 @@
 -- ============================================================
 -- Migration: ZRA Smart Invoice (VSDC) Support
--- Run this in: Supabase SQL Editor → paste & click Run
 -- ============================================================
 
 -- 1. Extend tenant_settings with ZRA VSDC credentials
