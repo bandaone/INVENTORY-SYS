@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Loader2, Store, CalendarDays, Lock } from 'lucide-react';
+import { CheckCircle2, Loader2, Store, CalendarDays, Lock, CreditCard, ArrowUpRight, ShieldCheck, Download } from 'lucide-react';
 
 export default function SubscriptionPage() {
   const [loading, setLoading] = useState(true);
@@ -45,7 +45,7 @@ export default function SubscriptionPage() {
       await loadBilling();
       setTimeout(() => setSuccess(false), 5000);
     } catch {
-      alert('Sandbox payment failed.');
+      alert('Payment processing failed. Please try again.');
     } finally {
       setPaying(false);
     }
@@ -60,7 +60,7 @@ export default function SubscriptionPage() {
   }
 
   const isTrial = data?.tenant?.status === 'TRIAL';
-  const isActive = data?.tenant?.status === 'ACTIVE';
+  const isActive = data?.tenant?.status === 'ACTIVE' || data?.tenant?.status === 'active';
   const amountDue = (data?.locations || 1) * 2500;
 
   const tierLabel: Record<string, string> = {
@@ -71,68 +71,85 @@ export default function SubscriptionPage() {
   const planName = tierLabel[data?.tenant?.subscription_tier] || 'Premium SaaS Plan';
 
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '40px 32px', fontFamily: 'Outfit, sans-serif', color: 'var(--text-main)' }}>
-      <h1 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '6px' }}>Billing &amp; Subscription</h1>
-      <p style={{ color: 'var(--text-muted)', marginBottom: '40px', fontSize: '15px' }}>
-        Manage your Retail OS plan and payment methods.
-      </p>
+    <div className="animate-fade-in" style={{ paddingBottom: '60px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
+        <div>
+          <h1>Billing & Subscription</h1>
+          <p className="subtitle">Centrally manage your active plan, payment methods, and billing history.</p>
+        </div>
+        {!isTrial && (
+          <button 
+            onClick={() => window.location.href = 'mailto:billing@retailos.com?subject=Upgrade%20Request'}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--primary)', color: '#0f1115', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 14px rgba(74,222,128,0.2)' }}
+          >
+            <ArrowUpRight size={18} />
+            Upgrade Plan
+          </button>
+        )}
+      </div>
 
       {success && (
         <div style={{ padding: '16px 20px', background: 'var(--primary-glow)', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: '12px', marginBottom: '32px', display: 'flex', alignItems: 'center', gap: '12px', fontWeight: 600 }}>
           <CheckCircle2 size={20} />
-          Payment Successful! Your store is now fully active.
+          Payment successfully processed. Your workspace is fully secured.
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', alignItems: 'start' }}>
-
-        {/* Plan Card */}
-        <div className="glass-panel" style={{ padding: '36px', position: 'relative' }}>
-
-          {/* Status badge */}
-          <div style={{ position: 'absolute', top: '24px', right: '24px' }}>
-            {isTrial && (
-              <span style={{ padding: '6px 14px', borderRadius: '20px', background: 'rgba(245,158,11,0.15)', color: 'var(--warning)', fontSize: '13px', fontWeight: 700, border: '1px solid rgba(245,158,11,0.3)' }}>
-                Free Trial
-              </span>
-            )}
-            {isActive && (
-              <span style={{ padding: '6px 14px', borderRadius: '20px', background: 'var(--primary-glow)', color: 'var(--primary)', fontSize: '13px', fontWeight: 700, border: '1px solid var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CheckCircle2 size={14} /> Active Plan
-              </span>
-            )}
-            {!isTrial && !isActive && (
-              <span style={{ padding: '6px 14px', borderRadius: '20px', background: 'rgba(239,68,68,0.15)', color: 'var(--danger)', fontSize: '13px', fontWeight: 700, border: '1px solid rgba(239,68,68,0.3)' }}>
-                Suspended
-              </span>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-            <div style={{ width: '56px', height: '56px', background: 'var(--primary-glow)', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
-              <Store size={28} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px', alignItems: 'start' }}>
+        
+        {/* Active Plan Card */}
+        <div className="glass-panel" style={{ padding: '32px', position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ width: '48px', height: '48px', background: 'var(--primary-glow)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+                <Store size={24} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{planName}</h2>
+                <div style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '2px' }}>
+                  {data?.locations} Licensed Branch{data?.locations !== 1 ? 'es' : ''}
+                </div>
+              </div>
             </div>
+            
+            {/* Status Badge */}
             <div>
-              <h2 style={{ fontSize: '22px', fontWeight: 700 }}>{planName}</h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>{data?.locations} Active Location{data?.locations > 1 ? 's' : ''}</p>
+              {isTrial && (
+                <span style={{ padding: '6px 12px', borderRadius: '20px', background: 'rgba(245,158,11,0.1)', color: 'var(--warning)', fontSize: '12px', fontWeight: 700, border: '1px solid rgba(245,158,11,0.2)' }}>
+                  Free Trial
+                </span>
+              )}
+              {isActive && (
+                <span style={{ padding: '6px 12px', borderRadius: '20px', background: 'var(--primary-glow)', color: 'var(--primary)', fontSize: '12px', fontWeight: 700, border: '1px solid rgba(74,222,128,0.2)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <ShieldCheck size={14} /> Active
+                </span>
+              )}
+              {!isTrial && !isActive && (
+                <span style={{ padding: '6px 12px', borderRadius: '20px', background: 'rgba(239,68,68,0.1)', color: 'var(--danger)', fontSize: '12px', fontWeight: 700, border: '1px solid rgba(239,68,68,0.2)' }}>
+                  Suspended
+                </span>
+              )}
             </div>
           </div>
 
-          <div style={{ marginBottom: '28px' }}>
-            <span style={{ fontSize: '48px', fontWeight: 900, letterSpacing: '-0.03em' }}>
-              ZMW {amountDue.toLocaleString()}
-            </span>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 600, marginLeft: '8px' }}>/ month</span>
+          <div style={{ padding: '24px', background: 'var(--hover-bg)', borderRadius: '12px', border: '1px solid var(--panel-border)', marginBottom: '24px' }}>
+            <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Current Billing Cycle</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+              <span style={{ fontSize: '40px', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--text-main)' }}>
+                ZMW {amountDue.toLocaleString()}
+              </span>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>/ month</span>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '32px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: isTrial ? '32px' : '0' }}>
             {[
-              'Unlimited Users & Cashiers',
-              'Unlimited Products & Sales',
-              'Advanced Stock Analytics',
-              'ZRA Smart Invoice Integration',
+              'Unlimited System Users & Cashiers',
+              'Unlimited SKUs & Sales Volume',
+              'Real-Time Cross-Branch Synchronization',
+              'ZRA Smart Invoice / VSDC Integration',
             ].map((feature) => (
-              <div key={feature} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '15px', color: 'var(--text-muted)' }}>
+              <div key={feature} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', color: 'var(--text-main)', fontWeight: 500 }}>
                 <CheckCircle2 size={18} color="var(--primary)" />
                 {feature}
               </div>
@@ -140,72 +157,83 @@ export default function SubscriptionPage() {
           </div>
 
           {isTrial && (
-            <div style={{ padding: '24px', borderRadius: '16px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '16px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px dashed var(--panel-border)' }}>
+              <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Lock size={16} color="var(--primary)" />
-                Activate your subscription
+                Secure Your Workspace
               </h3>
-              <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                Your trial will expire soon. Secure your store data by activating your plan today.
+              <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+                Your trial will expire soon. Process your payment today to maintain uninterrupted access to your enterprise data.
               </p>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <button
                   onClick={() => handleSandboxPayment('MTN MoMo')}
                   disabled={paying}
-                  style={{ flex: 1, minWidth: '120px', background: '#ffcc00', color: '#000', fontWeight: 700, padding: '14px 20px', borderRadius: '10px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  style={{ flex: 1, minWidth: '120px', background: '#ffcc00', color: '#000', fontWeight: 700, padding: '12px 16px', borderRadius: '8px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'opacity 0.2s' }}
                 >
-                  {paying ? <Loader2 size={18} className="spin" /> : 'Pay via MTN MoMo'}
+                  {paying ? <Loader2 size={16} className="spin" /> : 'Pay via MTN'}
                 </button>
                 <button
                   onClick={() => handleSandboxPayment('Airtel Money')}
                   disabled={paying}
-                  style={{ flex: 1, minWidth: '120px', background: '#e60000', color: '#fff', fontWeight: 700, padding: '14px 20px', borderRadius: '10px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontFamily: 'Outfit, sans-serif', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  style={{ flex: 1, minWidth: '120px', background: '#e60000', color: '#fff', fontWeight: 700, padding: '12px 16px', borderRadius: '8px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'opacity 0.2s' }}
                 >
-                  {paying ? <Loader2 size={18} className="spin" /> : 'Pay via Airtel'}
+                  {paying ? <Loader2 size={16} className="spin" /> : 'Pay via Airtel'}
                 </button>
               </div>
-              <p style={{ marginTop: '16px', textAlign: 'center', fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
-                Test Sandbox Mode
-              </p>
             </div>
           )}
         </div>
 
-        {/* Billing History */}
-        <div className="glass-panel" style={{ padding: '28px' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <CalendarDays size={20} color="var(--text-muted)" />
-            Billing History
+        {/* Billing History Card */}
+        <div className="glass-panel" style={{ padding: '32px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 24px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <CalendarDays size={20} color="var(--primary)" />
+            Transaction History
           </h3>
+          
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {data?.history?.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0', fontSize: '14px' }}>
-                No billing events yet.
-              </p>
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)', background: 'var(--hover-bg)', borderRadius: '12px', border: '1px dashed var(--panel-border)', fontSize: '14px' }}>
+                No recent transactions found.
+              </div>
             ) : (
               data?.history?.map((evt: any) => (
-                <div key={evt.id} style={{ padding: '16px 20px', borderRadius: '12px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 600, fontSize: '14px' }}>
-                      {evt.event_type.replace(/_/g, ' ')}
-                    </span>
-                    <span style={{
-                      fontSize: '12px', fontWeight: 700, padding: '4px 10px', borderRadius: '20px',
-                      background: evt.status === 'POSTED' ? 'var(--primary-glow)' : 'rgba(245,158,11,0.15)',
-                      color: evt.status === 'POSTED' ? 'var(--primary)' : 'var(--warning)',
-                    }}>
-                      {evt.status}
-                    </span>
+                <div key={evt.id} style={{ padding: '16px 20px', borderRadius: '12px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'transform 0.2s, box-shadow 0.2s' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: evt.status === 'POSTED' || evt.status === 'paid' ? 'var(--primary-glow)' : 'rgba(96,165,250,0.1)', color: evt.status === 'POSTED' || evt.status === 'paid' ? 'var(--primary)' : 'var(--secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <CreditCard size={18} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '14px', textTransform: 'capitalize', color: 'var(--text-main)' }}>
+                        {evt.event_type.replace(/_/g, ' ')}
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        {new Date(evt.due_at || evt.effective_at).toLocaleDateString('en-ZM', { year: 'numeric', month: 'long', day: 'numeric' })}
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: '20px', fontWeight: 700 }}>ZMW {Number(evt.amount).toLocaleString()}</div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                    {new Date(evt.due_at || evt.effective_at).toLocaleDateString('en-ZM', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-main)' }}>
+                      {evt.currency || 'ZMW'} {Number(evt.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </div>
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      marginTop: '4px',
+                      fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
+                      background: evt.status === 'POSTED' || evt.status === 'paid' ? 'var(--primary-glow)' : 'rgba(245,158,11,0.1)',
+                      color: evt.status === 'POSTED' || evt.status === 'paid' ? 'var(--primary)' : 'var(--warning)',
+                    }}>
+                      {evt.status === 'POSTED' || evt.status === 'paid' ? 'SUCCESS' : evt.status}
+                    </div>
                   </div>
                 </div>
               ))
             )}
           </div>
         </div>
+
       </div>
     </div>
   );
