@@ -102,6 +102,9 @@ export default function POSPage() {
   }, []);
 
   useEffect(() => {
+    // Only fetch the full location list for roles that need the dropdown (owner, manager)
+    // Cashiers are always locked to their assigned location_id from the login cookie
+    if (session.staffRole === 'cashier') return;
     fetch('/api/locations')
       .then((r) => r.json())
       .then((data) => {
@@ -110,7 +113,7 @@ export default function POSPage() {
         setSelectedLocationId((current) => current || nextLocations[0]?.id || '');
       })
       .catch((err) => console.error(err));
-  }, []);
+  }, [session.staffRole]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -348,17 +351,25 @@ export default function POSPage() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <select
-              value={selectedLocationId}
-              onChange={(e) => setSelectedLocationId(e.target.value)}
-              style={{ background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-main)', borderRadius: '8px', padding: '8px 10px', minWidth: '180px' }}
-              title="Sale location"
-            >
-              <option value="">Select location</option>
-              {locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>{loc.name}</option>
-              ))}
-            </select>
+            {/* Location: badge for cashiers, dropdown for managers/owners */}
+            {session.staffRole === 'cashier' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
+                <Package size={14} color="var(--primary)" />
+                {session.locationName || 'Assigned Store'}
+              </div>
+            ) : (
+              <select
+                value={selectedLocationId}
+                onChange={(e) => setSelectedLocationId(e.target.value)}
+                style={{ background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', color: 'var(--text-main)', borderRadius: '8px', padding: '8px 10px', minWidth: '180px' }}
+                title="Sale location"
+              >
+                <option value="">Select location</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                ))}
+              </select>
+            )}
 
             {/* Theme toggle */}
             <button onClick={toggleTheme} title="Toggle theme"

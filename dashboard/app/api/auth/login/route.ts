@@ -72,6 +72,14 @@ export async function POST(req: Request) {
     const user = result.rows[0];
     let redirectTo = '/';
 
+    // Cashiers MUST have a location assigned — block login if not
+    if (user.role === 'cashier' && !user.location_id) {
+      return NextResponse.json(
+        { error: 'Your account has no store assigned. Contact your manager to assign you to a branch.' },
+        { status: 403 }
+      );
+    }
+
     if (user.role === 'owner') {
       const onboardingResult = await adminPool.query(`
         SELECT go_live_approved, current_step
