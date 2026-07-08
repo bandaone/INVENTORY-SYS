@@ -6,13 +6,13 @@ export async function POST(req: Request) {
   try {
     const { name, tier, location } = await req.json();
 
-    // 1. Insert Tenant
+    // 1,. Insert Tenant
     const tenantRes = await fetchQuery(`
       INSERT INTO tenants (name, subscription_tier, status, max_locations)
       VALUES ($1, $2, 'TRIAL', $3)
       RETURNING id
     `, [name, tier, tier === 'enterprise_fleet' ? 20 : tier === 'growth' ? 5 : 1]);
-    
+
     const tenantId = tenantRes[0].id;
 
     // 2. Insert Default Location for the tenant
