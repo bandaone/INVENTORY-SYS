@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/zra-sync",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}
