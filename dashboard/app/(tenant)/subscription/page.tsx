@@ -8,6 +8,7 @@ export default function SubscriptionPage() {
   const [data, setData] = useState<any>(null);
   const [paying, setPaying] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('260');
 
   useEffect(() => {
     loadBilling();
@@ -31,23 +32,31 @@ export default function SubscriptionPage() {
     }
   };
 
-  const handleManualPaymentRequest = async () => {
-    // In a real flow, this would open a modal to upload proof of payment or enter a MoMo reference.
-    // For now, we will simulate the request being sent to the superadmin.
+  const handleMtnPayment = async () => {
+    if (phoneNumber.length < 10) return alert('Please enter a valid MTN number (e.g. 26096...)');
+    
     setPaying(true);
     try {
       const amount = (data?.locations || 1) * 2500;
-      const res = await fetch('/api/subscription/sandbox-pay', {
+      const res = await fetch('/api/subscription/momo/request-to-pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, method: 'Manual Transfer' }),
+        body: JSON.stringify({ amount, phoneNumber }),
       });
       if (!res.ok) throw new Error('Payment failed');
-      setSuccess(true);
-      await loadBilling();
-      setTimeout(() => setSuccess(false), 5000);
+      const json = await res.json();
+      
+      alert('A payment prompt has been sent to ' + phoneNumber + '. Please check your phone and enter your PIN.');
+      // In production, we would now poll the status endpoint to verify if they put the PIN in.
+      // For now, we simulate success after 5 seconds to demonstrate the flow.
+      setTimeout(async () => {
+        setSuccess(true);
+        await loadBilling();
+        setTimeout(() => setSuccess(false), 5000);
+      }, 5000);
+      
     } catch {
-      alert('Failed to submit payment request.');
+      alert('Failed to send payment prompt. Please try again.');
     } finally {
       setPaying(false);
     }
@@ -167,13 +176,23 @@ export default function SubscriptionPage() {
               <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
                 Your trial will expire soon. Process your payment today to maintain uninterrupted access to your enterprise data.
               </p>
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
+                  <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px', fontWeight: 600, color: 'var(--text-muted)' }}>MTN:</div>
+                  <input 
+                    type="text" 
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\\D/g, ''))}
+                    placeholder="26096XXXXXXX"
+                    style={{ width: '100%', padding: '12px 12px 12px 55px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'var(--bg-color)', color: 'var(--text-main)', fontSize: '15px', fontWeight: 600, outline: 'none' }}
+                  />
+                </div>
                 <button
-                  onClick={handleManualPaymentRequest}
+                  onClick={handleMtnPayment}
                   disabled={paying}
-                  style={{ flex: 1, minWidth: '120px', background: 'var(--primary)', color: '#0f1115', fontWeight: 700, padding: '12px 16px', borderRadius: '8px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'opacity 0.2s' }}
+                  style={{ flex: 1, minWidth: '160px', background: '#ffcc00', color: '#000', fontWeight: 700, padding: '12px 16px', borderRadius: '8px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'opacity 0.2s' }}
                 >
-                  {paying ? <Loader2 size={16} className="spin" /> : 'Confirm Payment Transfer'}
+                  {paying ? <Loader2 size={16} className="spin" /> : 'Send PIN Prompt to Phone'}
                 </button>
               </div>
             </div>
