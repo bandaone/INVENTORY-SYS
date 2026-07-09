@@ -31,22 +31,69 @@ export default function SubscriptionPage() {
     }
   };
 
-  const handleSandboxPayment = async (method: string) => {
+  const handleFlutterwavePayment = async () => {
     setPaying(true);
+    
     try {
-      const amount = data.locations * 2500;
-      const res = await fetch('/api/subscription/sandbox-pay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, method }),
+      // 1. Fetch live pricing from DB (or use amountDue)
+      const amount = (data?.locations || 1) * 2500;
+      
+      // 2. Dynamically load Flutterwave script
+      const loadScript = () => new Promise((resolve) => {
+        if ((window as any).FlutterwaveCheckout) return resolve(true);
+        const script = document.createElement('script');
+        script.src = 'https://checkout.flutterwave.com/v3.js';
+        script.onload = () => resolve(true);
+        document.body.appendChild(script);
       });
-      if (!res.ok) throw new Error('Payment failed');
-      setSuccess(true);
-      await loadBilling();
-      setTimeout(() => setSuccess(false), 5000);
-    } catch {
-      alert('Payment processing failed. Please try again.');
-    } finally {
+      await loadScript();
+
+      // 3. Open Modal
+      (window as any).FlutterwaveCheckout({
+        public_key: process.env.NEXT_PUBLIC_FLUTTERWAVE_PUBLIC_KEY || 'FLWPUBK_TEST-SANDBOXDEMOKEY-X',
+        tx_ref: `ROS_${Date.now()}_${data?.tenant?.id || 'TEST'}`,
+        amount: amount,
+        currency: 'ZMW',
+        payment_options: 'card,mobilemoneyzambia',
+        customer: {
+          email: 'admin@' + (data?.tenant?.name?.replace(/\s+/g, '').toLowerCase() || 'retailos') + '.com',
+          name: data?.tenant?.name || 'Retail OS Customer',
+        },
+        customizations: {
+          title: 'Retail OS Subscription',
+          description: `Payment for ${data?.locations} Branch License(s)`,
+          logo: 'https://i.imgur.com/your-logo.png', // Replace with real logo
+        },
+        callback: async function (payment: any) {
+          // 4. Verify payment securely on backend
+          try {
+            const verifyRes = await fetch('/api/subscription/flutterwave/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ transaction_id: payment.transaction_id })
+            });
+            if (verifyRes.ok) {
+              setSuccess(true);
+              await loadBilling();
+              setTimeout(() => setSuccess(false), 5000);
+            } else {
+              alert('Payment verification failed on server.');
+            }
+          } catch (err) {
+            console.error(err);
+            alert('Error verifying payment.');
+          } finally {
+            setPaying(false);
+          }
+        },
+        onclose: function () {
+          setPaying(false);
+        }
+      });
+      
+    } catch (err) {
+      console.error(err);
+      alert('Could not initialize payment gateway.');
       setPaying(false);
     }
   };
@@ -167,18 +214,11 @@ export default function SubscriptionPage() {
               </p>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <button
-                  onClick={() => handleSandboxPayment('MTN MoMo')}
+                  onClick={handleFlutterwavePayment}
                   disabled={paying}
-                  style={{ flex: 1, minWidth: '120px', background: '#ffcc00', color: '#000', fontWeight: 700, padding: '12px 16px', borderRadius: '8px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'opacity 0.2s' }}
+                  style={{ flex: 1, minWidth: '120px', background: 'var(--primary)', color: '#0f1115', fontWeight: 700, padding: '12px 16px', borderRadius: '8px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'opacity 0.2s' }}
                 >
-                  {paying ? <Loader2 size={16} className="spin" /> : 'Pay via MTN'}
-                </button>
-                <button
-                  onClick={() => handleSandboxPayment('Airtel Money')}
-                  disabled={paying}
-                  style={{ flex: 1, minWidth: '120px', background: '#e60000', color: '#fff', fontWeight: 700, padding: '12px 16px', borderRadius: '8px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'opacity 0.2s' }}
-                >
-                  {paying ? <Loader2 size={16} className="spin" /> : 'Pay via Airtel'}
+                  {paying ? <Loader2 size={16} className="spin" /> : 'Pay Securely via Flutterwave (MTN / Airtel / Card)'}
                 </button>
               </div>
             </div>
