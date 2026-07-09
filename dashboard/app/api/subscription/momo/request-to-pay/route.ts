@@ -61,7 +61,8 @@ export async function POST(req: Request) {
         },
         body: JSON.stringify({
           amount: amount.toString(),
-          currency: 'ZMW',
+          // Sandbox only accepts EUR. Live Zambia uses ZMW.
+          currency: MOMO_ENV === 'sandbox' ? 'EUR' : 'ZMW',
           externalId: `ROS-${tenantId}-${Date.now()}`,
           payer: {
             partyIdType: 'MSISDN',

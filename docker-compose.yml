@@ -102,6 +102,11 @@ services:
       NEXT_PUBLIC_API_TIMEOUT: 30000
       NEXTAUTH_URL: http://localhost:3000
       NEXTAUTH_SECRET: dev-nextauth-secret-change-in-production
+      # MTN MoMo (Sandbox — real credentials for Docker testing)
+      MTN_MOMO_ENVIRONMENT: sandbox
+      MTN_MOMO_SUBSCRIPTION_KEY: 7adcdbf169b74542b4df0c96d0016d81
+      MTN_MOMO_API_USER: 7aa2a723-5897-42a0-89a2-0c78c26fee14
+      MTN_MOMO_API_KEY: dd8f6702e0c34f0a938ab13445807b41
     ports:
       - "3000:3000"
     volumes:

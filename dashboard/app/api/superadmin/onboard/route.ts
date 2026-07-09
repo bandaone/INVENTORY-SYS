@@ -6,7 +6,7 @@ export async function POST(req: Request) {
   try {
     const { name, tier, location } = await req.json();
 
-    // 1,. Insert Tenant
+    // 1. Insert Tenant
     const tenantRes = await fetchQuery(`
       INSERT INTO tenants (name, subscription_tier, status, max_locations)
       VALUES ($1, $2, 'TRIAL', $3)
