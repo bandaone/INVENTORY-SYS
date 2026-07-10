@@ -6,6 +6,7 @@ export function middleware(request: NextRequest) {
   const publicApiPaths = [
     '/api/auth/login',
     '/api/register',
+    '/api/subscription/momo/callback'
   ];
 
   // If the request is for the API

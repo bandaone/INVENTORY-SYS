@@ -37,9 +37,9 @@ export async function fetchQuery(text: string, params?: any[]) {
   try {
     const res = await client.query(text, params);
     return res.rows;
-  } catch (err) {
+  } catch (err: any) {
     console.error('[DB ADMIN ERROR]:', err);
-    throw new Error('A database error occurred.');
+    throw new Error('A database error occurred: ' + err.message);
   } finally {
     client.release();
   }
@@ -58,10 +58,10 @@ export async function fetchTenantQuery(tenantId: string, text: string, params?: 
     const res = await client.query(text, params);
     await client.query('COMMIT');
     return res.rows;
-  } catch (err) {
+  } catch (err: any) {
     await client.query('ROLLBACK');
     console.error('[RLS TENANT ERROR] tenantId:', tenantId, 'error:', err);
-    throw new Error('A database error occurred.');
+    throw new Error('A database error occurred: ' + err.message);
   } finally {
     client.release();
   }

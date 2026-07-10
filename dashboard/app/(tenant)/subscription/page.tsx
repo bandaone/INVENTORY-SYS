@@ -32,6 +32,37 @@ export default function SubscriptionPage() {
     }
   };
 
+  const pollPaymentStatus = async (referenceId: string, attempts = 0) => {
+    if (attempts >= 18) { // 90 seconds max
+      setPaying(false);
+      alert('Payment is taking longer than expected. We will update your dashboard once MTN confirms it.');
+      return;
+    }
+    
+    try {
+      const res = await fetch(`/api/subscription/momo/status/${referenceId}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.status === 'SUCCESSFUL') {
+          setPaying(false);
+          setSuccess(true);
+          await loadBilling();
+          setTimeout(() => setSuccess(false), 5000);
+          return;
+        } else if (json.status === 'FAILED') {
+          setPaying(false);
+          alert('Payment was declined or cancelled. Please try again.');
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Polling error:', err);
+    }
+    
+    // Continue polling
+    setTimeout(() => pollPaymentStatus(referenceId, attempts + 1), 5000);
+  };
+
   const handleMtnPayment = async () => {
     if (phoneNumber.length < 10) return alert('Please enter a valid MTN number (e.g. 26096...)');
     
@@ -46,18 +77,15 @@ export default function SubscriptionPage() {
       if (!res.ok) throw new Error('Payment failed');
       const json = await res.json();
       
-      alert('A payment prompt has been sent to ' + phoneNumber + '. Please check your phone and enter your PIN.');
-      // In production, we would now poll the status endpoint to verify if they put the PIN in.
-      // For now, we simulate success after 5 seconds to demonstrate the flow.
-      setTimeout(async () => {
-        setSuccess(true);
-        await loadBilling();
-        setTimeout(() => setSuccess(false), 5000);
-      }, 5000);
+      alert(json.message || 'A payment prompt has been sent to ' + phoneNumber + '. Please check your phone and enter your PIN.');
       
+      if (json.referenceId) {
+        pollPaymentStatus(json.referenceId);
+      } else {
+        setPaying(false); // Fallback if no reference returned
+      }
     } catch {
       alert('Failed to send payment prompt. Please try again.');
-    } finally {
       setPaying(false);
     }
   };
@@ -236,12 +264,19 @@ export default function SubscriptionPage() {
                       alignItems: 'center',
                       marginTop: '4px',
                       fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
-                      background: evt.status === 'POSTED' || evt.status === 'paid' ? 'var(--primary-glow)' : 'rgba(245,158,11,0.1)',
-                      color: evt.status === 'POSTED' || evt.status === 'paid' ? 'var(--primary)' : 'var(--warning)',
+                      background: evt.status === 'POSTED' || evt.status === 'paid' || evt.status === 'SUCCESSFUL' ? 'var(--primary-glow)' : 'rgba(245,158,11,0.1)',
+                      color: evt.status === 'POSTED' || evt.status === 'paid' || evt.status === 'SUCCESSFUL' ? 'var(--primary)' : 'var(--warning)',
                     }}>
-                      {evt.status === 'POSTED' || evt.status === 'paid' ? 'SUCCESS' : evt.status}
+                      {evt.status === 'POSTED' || evt.status === 'paid' || evt.status === 'SUCCESSFUL' ? 'SUCCESS' : evt.status}
                     </div>
                   </div>
+                  {(evt.status === 'POSTED' || evt.status === 'paid' || evt.status === 'SUCCESSFUL') && (
+                    <div style={{ marginLeft: '16px' }}>
+                      <a href={`/api/subscription/receipt/${evt.id}`} target="_blank" rel="noopener noreferrer" style={{ background: 'transparent', border: '1px solid var(--panel-border)', color: 'var(--text-main)', padding: '6px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Download Receipt">
+                        <Download size={16} />
+                      </a>
+                    </div>
+                  )}
                 </div>
               ))
             )}

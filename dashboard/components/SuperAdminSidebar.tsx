@@ -106,7 +106,6 @@ export default function SuperAdminSidebar() {
             </>
           )}
         </button>
-        </button>
       </div>
     </aside>
   );
