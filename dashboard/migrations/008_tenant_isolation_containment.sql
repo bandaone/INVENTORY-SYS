@@ -758,6 +758,7 @@ $sales_return_item_policy$;
 DO $tenant_table_privileges$
 DECLARE
   table_name text;
+  data_api_role text;
   column_grant record;
 BEGIN
   FOREACH table_name IN ARRAY ARRAY[
@@ -803,6 +804,19 @@ BEGIN
         'REVOKE ALL PRIVILEGES ON TABLE public.%I FROM PUBLIC',
         table_name
       );
+      -- Supabase exposes the public schema through its Data API roles. Remove
+      -- any inherited/default grants so browser tokens cannot bypass the
+      -- application session and tenant-context boundary.
+      FOREACH data_api_role IN ARRAY ARRAY['anon', 'authenticated']
+      LOOP
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = data_api_role) THEN
+          EXECUTE format(
+            'REVOKE ALL PRIVILEGES ON TABLE public.%I FROM %I',
+            table_name,
+            data_api_role
+          );
+        END IF;
+      END LOOP;
     END IF;
   END LOOP;
 
@@ -815,7 +829,7 @@ BEGIN
       string_agg(format('%I', privilege.column_name), ', ' ORDER BY privilege.column_name) AS column_names
     FROM information_schema.column_privileges AS privilege
     WHERE privilege.table_schema = 'public'
-      AND privilege.grantee IN ('PUBLIC', 'retail_os_app')
+      AND privilege.grantee IN ('PUBLIC', 'retail_os_app', 'anon', 'authenticated')
     GROUP BY privilege.grantee, privilege.table_name
   LOOP
     EXECUTE format(

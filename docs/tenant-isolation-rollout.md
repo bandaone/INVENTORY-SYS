@@ -36,6 +36,30 @@ these conditions and aborts if they are unsafe.
 The Docker initializer creates the equivalent local-development role. It does
 not rerun for an existing PostgreSQL volume.
 
+### Supabase production
+
+Run role provisioning and migration SQL from the Supabase Dashboard SQL Editor.
+Create the runtime identity before running migration 008 (replace the password
+placeholder with a newly generated database password):
+
+```sql
+CREATE ROLE retail_os_app
+  LOGIN PASSWORD 'REPLACE_WITH_A_NEW_RANDOM_PASSWORD'
+  NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE retail_os_app SET row_security = on;
+REVOKE ALL ON DATABASE postgres FROM retail_os_app;
+GRANT CONNECT ON DATABASE postgres TO retail_os_app;
+REVOKE CREATE ON SCHEMA public FROM retail_os_app;
+```
+
+After migration 008 succeeds, copy Supabase's Transaction pooler connection
+string and replace only its username and password with the restricted role. For
+the shared pooler the username is `retail_os_app.PROJECT_REF`. Save that complete
+connection string as Vercel's sensitive production `APP_DATABASE_URL`; retain
+the existing owner connection only as `DATABASE_URL` for trusted control-plane
+operations. Migration 008 also removes application-table grants from Supabase's
+`anon` and `authenticated` Data API roles.
+
 ## 4. Apply containment before deploying the app
 
 ```bash

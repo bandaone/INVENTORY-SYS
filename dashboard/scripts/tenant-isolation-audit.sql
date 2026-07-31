@@ -197,7 +197,7 @@ FROM pg_policies
 WHERE schemaname = 'public'
 ORDER BY tablename, policyname;
 
-\echo '=== Explicit PUBLIC and retail_os_app table grants ==='
+\echo '=== Explicit application and Supabase Data API table grants ==='
 SELECT
   grantee,
   table_name,
@@ -205,7 +205,7 @@ SELECT
   is_grantable
 FROM information_schema.table_privileges
 WHERE table_schema = 'public'
-  AND grantee IN ('PUBLIC', 'retail_os_app')
+  AND grantee IN ('PUBLIC', 'retail_os_app', 'anon', 'authenticated')
 ORDER BY table_name, grantee, privilege_type;
 
 \echo '=== Explicit column ACLs (table grants are reported above) ==='
