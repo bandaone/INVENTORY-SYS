@@ -1,30 +1,24 @@
 export const dynamic = "force-dynamic";
 import { fetchTenantQuery, adminPool } from '@/lib/db';
+import { requireTenantSession, SessionError } from '@/lib/session';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-
-function getTenantId() {
-  const t = cookies().get('tenant_id')?.value;
-  if (!t) throw new Error('Unauthorized');
-  return t;
-}
 
 // GET: load settings for this tenant
 export async function GET() {
   try {
-    const tenantId = getTenantId();
+    const { tenantId } = await requireTenantSession(['owner'], { allowSuspended: true });
 
     const [settingsRows, tenantRows, billingRows] = await Promise.all([
       fetchTenantQuery(tenantId, `
-        SELECT * FROM tenant_settings WHERE tenant_id = '${tenantId}'
-      `).catch(() => []),
+        SELECT * FROM tenant_settings WHERE tenant_id = $1
+      `, [tenantId]).catch(() => []),
       adminPool.query(`SELECT name, subscription_tier, max_locations, status FROM tenants WHERE id = $1`, [tenantId]),
       fetchTenantQuery(tenantId, `
         SELECT id, event_type, amount, currency, status, due_at, effective_at 
         FROM billing_events 
-        WHERE tenant_id = '${tenantId}' 
+        WHERE tenant_id = $1
         ORDER BY created_at DESC LIMIT 10
-      `).catch(() => [])
+      `, [tenantId]).catch(() => [])
     ]);
 
     const settings = settingsRows[0] || {};
@@ -33,7 +27,7 @@ export async function GET() {
 
     return NextResponse.json({ settings, tenant, billing_history });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Settings GET Error]', err);
     return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 });
   }
@@ -42,7 +36,7 @@ export async function GET() {
 // PUT: save settings for this tenant
 export async function PUT(req: Request) {
   try {
-    const tenantId = getTenantId();
+    const { tenantId } = await requireTenantSession(['owner']);
     const body = await req.json();
     const {
       business_name, owner_email, owner_phone,
@@ -82,7 +76,7 @@ export async function PUT(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Settings PUT Error]', err);
     return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
   }

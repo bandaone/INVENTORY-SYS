@@ -1,14 +1,11 @@
 export const dynamic = "force-dynamic";
-import { adminPool } from '@/lib/db';
+import { connectTenantClient } from '@/lib/db';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import type { PoolClient } from 'pg';
 import crypto from 'crypto';
+import { requireTenantSession, SessionError } from '@/lib/session';
 
-function getTenantId() {
-  const tenantId = cookies().get('tenant_id')?.value;
-  if (!tenantId) throw new Error('Unauthorized');
-  return tenantId;
-}
+const TRANSFER_ROLES = ['owner', 'store_manager', 'stock_clerk'] as const;
 
 async function getActiveLocation(client: any, tenantId: string, locationId: string) {
   const result = await client.query(
@@ -19,8 +16,10 @@ async function getActiveLocation(client: any, tenantId: string, locationId: stri
 }
 
 export async function GET(req: Request) {
+  let client: PoolClient | null = null;
   try {
-    const tenantId = getTenantId();
+    const session = await requireTenantSession(TRANSFER_ROLES);
+    const tenantId = session.tenantId;
     const { searchParams } = new URL(req.url);
     const kind = searchParams.get('kind') || 'source';
     const locationId = searchParams.get('location_id');
@@ -29,11 +28,18 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Location is required' }, { status: 400 });
     }
 
-    const client = await adminPool.connect();
+    client = await connectTenantClient();
     try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId]);
       const location = await getActiveLocation(client, tenantId, locationId);
       if (!location) {
+        await client.query('ROLLBACK');
         return NextResponse.json({ error: 'Location not found' }, { status: 404 });
+      }
+      if (session.role !== 'owner' && session.locationId !== locationId) {
+        await client.query('ROLLBACK');
+        return NextResponse.json({ error: 'You can only view transfers for your assigned store' }, { status: 403 });
       }
 
       if (kind === 'incoming') {
@@ -49,7 +55,7 @@ export async function GET(req: Request) {
              sm.created_at AS transferred_at,
              sm.notes AS transfer_notes
            FROM garments g
-           JOIN variants v ON v.id = g.variant_id
+           JOIN variants v ON v.id = g.variant_id AND v.tenant_id = g.tenant_id
            LEFT JOIN LATERAL (
              SELECT from_location_id, notes, created_at
              FROM stock_movements sm
@@ -59,7 +65,7 @@ export async function GET(req: Request) {
              ORDER BY sm.created_at DESC
              LIMIT 1
            ) sm ON true
-           LEFT JOIN locations origin ON origin.id = sm.from_location_id
+           LEFT JOIN locations origin ON origin.id = sm.from_location_id AND origin.tenant_id = g.tenant_id
            WHERE g.tenant_id = $1
              AND g.location_id = $2
              AND g.status = 'transferred'
@@ -67,6 +73,7 @@ export async function GET(req: Request) {
           [tenantId, locationId]
         );
 
+        await client.query('COMMIT');
         return NextResponse.json({ location, items: items.rows });
       }
 
@@ -79,7 +86,7 @@ export async function GET(req: Request) {
            g.status,
            g.updated_at
          FROM garments g
-         JOIN variants v ON v.id = g.variant_id
+         JOIN variants v ON v.id = g.variant_id AND v.tenant_id = g.tenant_id
          WHERE g.tenant_id = $1
            AND g.location_id = $2
            AND g.status = 'in_stock'
@@ -87,13 +94,19 @@ export async function GET(req: Request) {
         [tenantId, locationId]
       );
 
+      await client.query('COMMIT');
       return NextResponse.json({ location, items: items.rows });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
     } finally {
       client.release();
+      client = null;
     }
   } catch (error) {
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (client) await client.query('ROLLBACK').catch(() => undefined);
+    if (error instanceof SessionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error('[Transfers GET Error]', error);
     return NextResponse.json({ error: 'Failed to load transfer stock' }, { status: 500 });
@@ -101,16 +114,16 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const client = await adminPool.connect();
+  let client: PoolClient | null = null;
   let inTransaction = false;
 
   try {
-    const tenantId = getTenantId();
-    const staffId = cookies().get('staff_id')?.value;
-    const staffRole = cookies().get('staff_role')?.value || 'stock_clerk';
+    const session = await requireTenantSession(TRANSFER_ROLES);
+    const tenantId = session.tenantId;
+    const staffId = session.staffId;
+    const staffRole = session.role;
     const { from_location_id, to_location_id, serials } = await req.json();
 
-    if (!staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     if (!from_location_id || !to_location_id) return NextResponse.json({ error: 'Source and destination are required' }, { status: 400 });
     if (from_location_id === to_location_id) return NextResponse.json({ error: 'Source and destination must be different' }, { status: 400 });
     if (!Array.isArray(serials) || serials.length === 0) return NextResponse.json({ error: 'Add at least one serial' }, { status: 400 });
@@ -120,8 +133,22 @@ export async function POST(req: Request) {
     );
     if (normalizedSerials.length === 0) return NextResponse.json({ error: 'Add at least one valid serial' }, { status: 400 });
 
+    client = await connectTenantClient();
     await client.query('BEGIN');
     inTransaction = true;
+    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId]);
+
+    const actor = await client.query(
+      `SELECT id, location_id FROM staff
+       WHERE id = $1 AND tenant_id = $2 AND role = $3 AND is_active = true`,
+      [staffId, tenantId, staffRole]
+    );
+    if (actor.rowCount !== 1) throw new SessionError('Operations session is no longer active');
+    if (staffRole !== 'owner' && actor.rows[0].location_id !== from_location_id) {
+      await client.query('ROLLBACK');
+      inTransaction = false;
+      return NextResponse.json({ error: 'You can only transfer stock from your assigned store' }, { status: 403 });
+    }
 
     const source = await getActiveLocation(client, tenantId, from_location_id);
     const destination = await getActiveLocation(client, tenantId, to_location_id);
@@ -222,12 +249,15 @@ export async function POST(req: Request) {
       destination_status: 'transferred',
     });
   } catch (error) {
-    if (inTransaction) {
+    if (inTransaction && client) {
       await client.query('ROLLBACK');
+    }
+    if (error instanceof SessionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error('[Transfers POST Error]', error);
     return NextResponse.json({ error: 'Failed to transfer stock' }, { status: 500 });
   } finally {
-    client.release();
+    client?.release();
   }
 }

@@ -1,18 +1,25 @@
 import { NextResponse } from 'next/server';
 import { adminPool } from '@/lib/db';
+import { sendSubscriptionReceiptEmail } from '@/lib/email';
+import { requireTenantSession, SessionError } from '@/lib/session';
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: { referenceId: string } }) {
   try {
+    const session = await requireTenantSession(['owner'], { allowSuspended: true });
     const referenceId = params.referenceId;
-    if (!referenceId) return NextResponse.json({ error: 'Missing referenceId' }, { status: 400 });
+    if (!referenceId || referenceId.length > 200) return NextResponse.json({ error: 'Invalid referenceId' }, { status: 400 });
 
     const client = await adminPool.connect();
     let billingRecord;
     
     try {
-      const dbRes = await client.query('SELECT status FROM billing_history WHERE reference_id = $1', [referenceId]);
+      const dbRes = await client.query(
+        `SELECT status, amount, currency, payer_msisdn
+         FROM billing_history WHERE reference_id = $1 AND tenant_id = $2`,
+        [referenceId, session.tenantId]
+      );
       if (dbRes.rowCount === 0) {
         return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
       }
@@ -39,7 +46,8 @@ export async function GET(req: Request, { params }: { params: { referenceId: str
           headers: {
             'Authorization': `Basic ${authString}`,
             'Ocp-Apim-Subscription-Key': MOMO_SUB_KEY
-          }
+          },
+          signal: AbortSignal.timeout(10_000),
        });
        if (tokenRes.ok) {
           const tokenData = await tokenRes.json();
@@ -49,42 +57,74 @@ export async function GET(req: Request, { params }: { params: { referenceId: str
                'Authorization': `Bearer ${tokenData.access_token}`,
                'X-Target-Environment': MOMO_ENV,
                'Ocp-Apim-Subscription-Key': MOMO_SUB_KEY
-             }
+             },
+             signal: AbortSignal.timeout(10_000),
           });
 
           if (statusRes.ok) {
              const statusData = await statusRes.json();
-             console.log('MTN Poll Status Data:', statusData);
              // Valid MTN statuses: PENDING, SUCCESSFUL, FAILED
              if (statusData.status === 'SUCCESSFUL' || statusData.status === 'FAILED') {
-                // We found a resolution! Process it synchronously here instead of via queue.
+                if (statusData.status === 'SUCCESSFUL') {
+                  const paidAmount = Number(statusData.amount);
+                  const paidCurrency = String(statusData.currency || '').toUpperCase();
+                  if (
+                    !Number.isFinite(paidAmount)
+                    || paidAmount < Number(billingRecord.amount)
+                    || paidCurrency !== String(billingRecord.currency || '').toUpperCase()
+                  ) {
+                    return NextResponse.json({ error: 'Verified payment does not match the pending invoice' }, { status: 409 });
+                  }
+                }
+
                 const client = await adminPool.connect();
+                let receipt: null | { email: string; record: any } = null;
                 try {
                   await client.query('BEGIN');
                   const updateRes = await client.query(`
                     UPDATE billing_history
                     SET status = $1, updated_at = NOW()
-                    WHERE reference_id = $2 AND status = 'PENDING'
+                    WHERE reference_id = $2 AND tenant_id = $3 AND status = 'PENDING'
                     RETURNING *
-                  `, [statusData.status, referenceId]);
+                  `, [statusData.status, referenceId, session.tenantId]);
                   
-                  if (updateRes.rowCount > 0 && statusData.status === 'SUCCESSFUL') {
+                  if ((updateRes.rowCount ?? 0) > 0 && statusData.status === 'SUCCESSFUL') {
                     const billingRecord = updateRes.rows[0];
-                    const tenantRes = await client.query(`SELECT subscription_end_date FROM tenants WHERE id = $1`, [billingRecord.tenant_id]);
-                    if (tenantRes.rowCount && tenantRes.rowCount > 0) {
-                      let newEndDate = new Date();
-                      const currentEndDate = tenantRes.rows[0].subscription_end_date ? new Date(tenantRes.rows[0].subscription_end_date) : null;
-                      if (currentEndDate && currentEndDate > newEndDate) newEndDate = currentEndDate;
-                      newEndDate.setDate(newEndDate.getDate() + 30);
-                      await client.query(`UPDATE tenants SET status = 'ACTIVE', subscription_end_date = $1, updated_at = NOW() WHERE id = $2`, [newEndDate, billingRecord.tenant_id]);
+                    const tenantRes = await client.query(
+                      `SELECT tenant.subscription_end_date, settings.owner_email
+                       FROM tenants AS tenant
+                       LEFT JOIN tenant_settings AS settings ON settings.tenant_id = tenant.id
+                       WHERE tenant.id = $1
+                       FOR UPDATE OF tenant`,
+                      [session.tenantId]
+                    );
+                    if ((tenantRes.rowCount ?? 0) !== 1) throw new Error('Payment tenant not found');
+                    let newEndDate = new Date();
+                    const currentEndDate = tenantRes.rows[0].subscription_end_date ? new Date(tenantRes.rows[0].subscription_end_date) : null;
+                    if (currentEndDate && currentEndDate > newEndDate) newEndDate = currentEndDate;
+                    newEndDate.setDate(newEndDate.getDate() + 30);
+                    await client.query(`UPDATE tenants SET status = 'ACTIVE', subscription_end_date = $1, updated_at = NOW() WHERE id = $2`, [newEndDate, session.tenantId]);
+
+                    if (tenantRes.rows[0].owner_email) {
+                      receipt = { email: tenantRes.rows[0].owner_email, record: billingRecord };
                     }
                   }
                   await client.query('COMMIT');
                 } catch (dbError) {
-                  await client.query('ROLLBACK');
-                  console.error('Fallback DB Error:', dbError);
+                  await client.query('ROLLBACK').catch(() => undefined);
+                  throw dbError;
                 } finally {
                   client.release();
+                }
+
+                if (receipt) {
+                  await sendSubscriptionReceiptEmail(receipt.email, {
+                    referenceId: receipt.record.reference_id,
+                    date: new Date().toISOString(),
+                    amount: receipt.record.amount,
+                    currency: receipt.record.currency,
+                    payerMsisdn: receipt.record.payer_msisdn,
+                  }).catch((emailError) => console.error('Subscription receipt email failed:', emailError));
                 }
                 
                 return NextResponse.json({ status: statusData.status });
@@ -96,6 +136,9 @@ export async function GET(req: Request, { params }: { params: { referenceId: str
     return NextResponse.json({ status: 'PENDING' });
 
   } catch (error: any) {
+    if (error instanceof SessionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('MTN Status Poll Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

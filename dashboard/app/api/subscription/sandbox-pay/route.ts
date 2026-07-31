@@ -1,17 +1,14 @@
 export const dynamic = "force-dynamic";
 import { adminPool } from '@/lib/db';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { requireTenantSession, SessionError } from '@/lib/session';
 
 export async function POST(req: Request) {
   try {
-    const c = cookies();
-    const tenantId = c.get('tenant_id')?.value;
-    const role = c.get('staff_role')?.value;
-
-    if (!tenantId || role !== 'owner') {
-      return NextResponse.json({ error: 'Unauthorized. Only owners can make payments.' }, { status: 401 });
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
+    const { tenantId } = await requireTenantSession(['owner'], { allowSuspended: true });
 
     const { amount, method } = await req.json();
 
@@ -43,6 +40,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, message: 'Payment successful (Sandbox)' });
 
   } catch (error) {
+    if (error instanceof SessionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('[Sandbox Payment Error]', error);
     return NextResponse.json({ error: 'Payment simulation failed' }, { status: 500 });
   }

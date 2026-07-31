@@ -1,8 +1,8 @@
 export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { fetchTenantQuery, pool } from '@/lib/db';
-import { initializeDevice } from '@/lib/zra';
+import { fetchTenantQuery } from '@/lib/db';
+import { initializeDevice, validateVsdcUrl } from '@/lib/zra';
+import { requireTenantSession, SessionError } from '@/lib/session';
 
 /**
  * POST /api/zra/initialize
@@ -13,9 +13,7 @@ import { initializeDevice } from '@/lib/zra';
  */
 export async function POST(req: Request) {
   try {
-    const cookieStore = cookies();
-    const tenantId = cookieStore.get('tenant_id')?.value;
-    if (!tenantId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { tenantId } = await requireTenantSession(['owner']);
 
     const { tpin, bhfId, dvcSrlNo, vsdcUrl } = await req.json();
 
@@ -28,6 +26,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'TPIN must be exactly 10 digits' }, { status: 400 });
     }
 
+    const safeVsdcUrl = validateVsdcUrl(vsdcUrl);
+
     // Save credentials first so we can read them in the ZRA service
     await fetchTenantQuery(tenantId, `
       UPDATE tenant_settings
@@ -37,10 +37,10 @@ export async function POST(req: Request) {
           zra_vsdc_url = $4,
           zra_enabled  = false
       WHERE tenant_id  = $5
-    `, [tpin, bhfId || '000', dvcSrlNo, vsdcUrl.trim(), tenantId]);
+    `, [tpin, bhfId || '000', dvcSrlNo, safeVsdcUrl, tenantId]);
 
     // Attempt initialization with the VSDC
-    const result = await initializeDevice({ tpin, bhfId: bhfId || '000', dvcSrlNo, vsdcUrl, lastInvcNo: 0 });
+    const result = await initializeDevice({ tpin, bhfId: bhfId || '000', dvcSrlNo, vsdcUrl: safeVsdcUrl, lastInvcNo: 0 });
 
     if (!result.success) {
       return NextResponse.json({
@@ -60,6 +60,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, message: 'ZRA Smart Invoice successfully activated!' });
   } catch (err: any) {
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[ZRA Initialize Error]', err);
     return NextResponse.json({ error: 'Initialization failed: ' + err.message }, { status: 500 });
   }
@@ -71,9 +72,7 @@ export async function POST(req: Request) {
  */
 export async function GET() {
   try {
-    const cookieStore = cookies();
-    const tenantId = cookieStore.get('tenant_id')?.value;
-    if (!tenantId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { tenantId } = await requireTenantSession(['owner']);
 
     const rows = await fetchTenantQuery(tenantId, `
       SELECT zra_enabled, zra_tpin, zra_bhf_id, zra_vsdc_url,
@@ -94,6 +93,7 @@ export async function GET() {
       lastInvcNo:    s.zra_last_invc_no,
     });
   } catch (err: any) {
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

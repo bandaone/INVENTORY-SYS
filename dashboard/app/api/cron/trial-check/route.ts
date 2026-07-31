@@ -8,19 +8,22 @@ import { NextResponse } from 'next/server';
 export async function GET(req: Request) {
   // Secure the cron endpoint from public access
   const authHeader = req.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     // 1. Suspend tenants whose trial has expired and are still in TRIAL status
     const suspendResult = await adminPool.query(`
-      UPDATE tenants
+      UPDATE tenants AS tenant
       SET status = 'SUSPENDED', updated_at = NOW()
-      WHERE status = 'TRIAL'
-        AND trial_ends_at IS NOT NULL
-        AND trial_ends_at < NOW()
-      RETURNING id, name, trial_ends_at
+      FROM onboarding_sessions AS onboarding
+      WHERE onboarding.tenant_id = tenant.id
+        AND tenant.status = 'TRIAL'
+        AND onboarding.trial_end_date IS NOT NULL
+        AND onboarding.trial_end_date < NOW()
+      RETURNING tenant.id, tenant.name, onboarding.trial_end_date
     `);
 
     const suspended = suspendResult.rows;
@@ -29,20 +32,22 @@ export async function GET(req: Request) {
     const day3Tenants = await adminPool.query(`
       SELECT t.id, t.name, ts.owner_email
       FROM tenants t
+      JOIN onboarding_sessions onboarding ON onboarding.tenant_id = t.id
       LEFT JOIN tenant_settings ts ON ts.tenant_id = t.id
       WHERE t.status = 'TRIAL'
-        AND t.trial_ends_at IS NOT NULL
-        AND t.trial_ends_at BETWEEN NOW() + interval '1 day 23 hours' AND NOW() + interval '2 days 1 hour'
+        AND onboarding.trial_end_date IS NOT NULL
+        AND onboarding.trial_end_date BETWEEN NOW() + interval '1 day 23 hours' AND NOW() + interval '2 days 1 hour'
     `);
 
     // 3. Find tenants entering final Day 5 — send urgent nudge
     const day5Tenants = await adminPool.query(`
       SELECT t.id, t.name, ts.owner_email
       FROM tenants t
+      JOIN onboarding_sessions onboarding ON onboarding.tenant_id = t.id
       LEFT JOIN tenant_settings ts ON ts.tenant_id = t.id
       WHERE t.status = 'TRIAL'
-        AND t.trial_ends_at IS NOT NULL
-        AND t.trial_ends_at BETWEEN NOW() - interval '1 hour' AND NOW() + interval '23 hours'
+        AND onboarding.trial_end_date IS NOT NULL
+        AND onboarding.trial_end_date BETWEEN NOW() - interval '1 hour' AND NOW() + interval '23 hours'
     `);
 
     // Trigger emails asynchronously

@@ -1,19 +1,14 @@
 import { NextResponse } from 'next/server';
 import { adminPool, fetchTenantQuery } from '@/lib/db';
-import { cookies } from 'next/headers';
+import { requireTenantSession, SessionError } from '@/lib/session';
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   try {
+    const { tenantId } = await requireTenantSession(['owner'], { allowSuspended: true });
     const transactionId = params.id;
     if (!transactionId) return new NextResponse('Missing transaction ID', { status: 400 });
-
-    const cookieStore = cookies();
-    const tenantId = cookieStore.get('tenant_id')?.value;
-    if (!tenantId) {
-      return new NextResponse('Unauthorized', { status: 401 });
-    }
 
     // Fetch billing record, ensuring it belongs to the authenticated tenant
     const res = await adminPool.query(`
@@ -122,6 +117,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     });
 
   } catch (error) {
+    if (error instanceof SessionError) {
+      return new NextResponse(error.message, { status: error.status });
+    }
     console.error('Receipt Generation Error:', error);
     return new NextResponse('Internal Server Error', { status: 500 });
   }

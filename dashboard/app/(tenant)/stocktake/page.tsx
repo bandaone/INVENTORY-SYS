@@ -1,13 +1,13 @@
 import { fetchTenantQuery } from '@/lib/db';
-import { cookies } from 'next/headers';
+import { getVerifiedSession } from '@/lib/session';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StocktakeSessionsPage() {
-  const cookieStore = cookies();
-  const tenantId = cookieStore.get('tenant_id')?.value;
-  if (!tenantId) redirect('/login');
+  const session = await getVerifiedSession();
+  if (!session?.tenantId || session.role !== 'owner') redirect('/login');
+  const tenantId = session.tenantId;
 
   const sessions = await fetchTenantQuery(tenantId, `
     SELECT 

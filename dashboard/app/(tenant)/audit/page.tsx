@@ -1,5 +1,5 @@
 import { fetchTenantQuery } from '@/lib/db';
-import { cookies } from 'next/headers';
+import { getVerifiedSession } from '@/lib/session';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
@@ -38,12 +38,11 @@ function formatAuditDetails(actionType: string, changes: any) {
 }
 
 export default async function AuditPage() {
-  const cookieStore = cookies();
-  const tenantId = cookieStore.get('tenant_id')?.value;
-
-  if (!tenantId) {
+  const session = await getVerifiedSession();
+  if (!session?.tenantId || session.role !== 'owner') {
     redirect('/login');
   }
+  const tenantId = session.tenantId;
 
   const auditLogs = await fetchTenantQuery(tenantId, `
     SELECT 

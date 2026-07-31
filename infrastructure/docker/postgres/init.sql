@@ -5,11 +5,21 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
+-- Local-development RLS role. Production must provision its own password and
+-- APP_DATABASE_URL outside source control.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'retail_os_app') THEN
+    CREATE ROLE retail_os_app LOGIN PASSWORD 'retail_os_app_password'
+      NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT NOBYPASSRLS;
+  END IF;
+END $$;
+
 -- Create helper function for tenant context
 CREATE OR REPLACE FUNCTION set_tenant_context(tenant_uuid UUID)
 RETURNS VOID AS $$
 BEGIN
-  PERFORM set_config('app.current_tenant', tenant_uuid::text, false);
+  PERFORM set_config('app.current_tenant', tenant_uuid::text, true);
 END;
 $$ LANGUAGE plpgsql;
 

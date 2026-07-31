@@ -1,8 +1,8 @@
 export const dynamic = "force-dynamic";
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { fetchTenantQuery } from '@/lib/db';
 import { normalizeSearchText, normalizeText } from '@/lib/smart-import';
+import { requireTenantSession, SessionError } from '@/lib/session';
 
 type CatalogCaps = {
   subtype: boolean;
@@ -93,10 +93,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const tenantId = cookies().get('tenant_id')?.value;
-    if (!tenantId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { tenantId } = await requireTenantSession(['owner', 'store_manager', 'stock_clerk']);
 
     const { id } = params;
     if (!id) {
@@ -125,10 +122,10 @@ export async function PATCH(
           ${caps.review ? 'missing_fields, detail_status,' : ''}
           search_text
         FROM variants
-        WHERE id = $1
+        WHERE id = $1 AND tenant_id = $2
         LIMIT 1
       `,
-      [id]
+      [id, tenantId]
     )) as Array<Record<string, any>>;
 
     const existing = existingRows[0];
@@ -239,7 +236,7 @@ export async function PATCH(
         UPDATE variants
         SET ${updates.join(', ')},
             updated_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND tenant_id = $${queryParams.length + 1}
         RETURNING
           id,
           name,
@@ -256,7 +253,7 @@ export async function PATCH(
           ${caps.review ? 'missing_fields, detail_status,' : ''}
           search_text
       `,
-      queryParams
+      [...queryParams, tenantId]
     );
 
     const variant = updatedRows[0];
@@ -275,6 +272,9 @@ export async function PATCH(
           },
     });
   } catch (err) {
+    if (err instanceof SessionError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     console.error('[Catalog PATCH]', err);
     return NextResponse.json({ error: 'Failed to update catalog item' }, { status: 500 });
   }

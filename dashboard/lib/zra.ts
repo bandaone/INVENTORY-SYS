@@ -12,7 +12,7 @@
  * for automatic retry by the cron job at /api/cron/zra-sync.
  */
 
-import { pool } from '@/lib/db';
+import { fetchTenantQuery } from '@/lib/db';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +51,52 @@ const PAYMENT_TYPE_MAP: Record<string, string> = {
   CREDIT:       '04',
 };
 
+/**
+ * Restrict every outbound VSDC request to an explicitly approved host. This is
+ * intentionally called at request time as well as when settings are saved so
+ * stale or directly-edited database values cannot turn a retry into SSRF.
+ */
+export function validateVsdcUrl(value: unknown): string {
+  let url: URL;
+  try {
+    url = new URL(String(value || '').trim());
+  } catch {
+    throw new Error('VSDC URL is invalid');
+  }
+
+  if (
+    url.username
+    || url.password
+    || url.search
+    || url.hash
+    || !['http:', 'https:'].includes(url.protocol)
+  ) {
+    throw new Error('VSDC URL is invalid');
+  }
+
+  const configuredHosts = (process.env.ZRA_ALLOWED_HOSTS || '')
+    .split(',')
+    .map((host) => host.trim().toLocaleLowerCase())
+    .filter(Boolean);
+  if (process.env.NODE_ENV === 'production' && configuredHosts.length === 0) {
+    throw new Error('ZRA_ALLOWED_HOSTS is required in production');
+  }
+
+  const normalizedHostname = url.hostname.toLocaleLowerCase();
+  const localDevelopmentHost = ['localhost', '127.0.0.1', '::1'].includes(normalizedHostname);
+  if (
+    !configuredHosts.includes(normalizedHostname)
+    && !(process.env.NODE_ENV !== 'production' && localDevelopmentHost)
+  ) {
+    throw new Error('VSDC host is not approved');
+  }
+  if (process.env.NODE_ENV === 'production' && url.protocol !== 'https:') {
+    throw new Error('VSDC URL must use HTTPS');
+  }
+
+  return url.toString().replace(/\/$/, '');
+}
+
 // ─── Tax Calculation Helpers ─────────────────────────────────────────────────
 
 /**
@@ -76,9 +122,10 @@ export function splitVat(inclAmt: number, taxTyCd: 'A' | 'B' | 'E') {
 async function vsdcPost(vsdcUrl: string, path: string, body: object): Promise<any> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout
+  const safeVsdcUrl = validateVsdcUrl(vsdcUrl);
 
   try {
-    const res = await fetch(`${vsdcUrl.replace(/\/$/, '')}${path}`, {
+    const res = await fetch(`${safeVsdcUrl}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -299,9 +346,11 @@ export async function submitSale(
     const mrcNo     = result?.data?.mrcNo     || '';
 
     // Persist ZRA data on the transaction record
-    await pool.query(
-      `UPDATE transactions SET zra_rcpt_no=$1, zra_intrl_data=$2, zra_mrc_no=$3, zra_vsd_status='synced' WHERE id=$4`,
-      [rcptNo, intrlData, mrcNo, transactionId]
+    await fetchTenantQuery(
+      tenantId,
+      `UPDATE transactions SET zra_rcpt_no=$1, zra_intrl_data=$2, zra_mrc_no=$3, zra_vsd_status='synced'
+       WHERE id=$4 AND tenant_id=$5`,
+      [rcptNo, intrlData, mrcNo, transactionId, tenantId]
     );
 
     return { success: true, rcptNo, intrlData, mrcNo };
@@ -317,15 +366,17 @@ export async function submitSale(
  */
 async function queueForRetry(tenantId: string, transactionId: string, payload: object, error: string) {
   try {
-    await pool.query(
+    await fetchTenantQuery(
+      tenantId,
       `INSERT INTO zra_sync_queue (tenant_id, transaction_id, payload, status, last_error)
        VALUES ($1, $2, $3, 'pending', $4)
        ON CONFLICT DO NOTHING`,
       [tenantId, transactionId, JSON.stringify(payload), error]
     );
-    await pool.query(
-      `UPDATE transactions SET zra_vsd_status='pending' WHERE id=$1`,
-      [transactionId]
+    await fetchTenantQuery(
+      tenantId,
+      `UPDATE transactions SET zra_vsd_status='pending' WHERE id=$1 AND tenant_id=$2`,
+      [transactionId, tenantId]
     );
   } catch (qErr) {
     console.error('[ZRA] Failed to queue for retry:', qErr);
@@ -337,12 +388,13 @@ async function queueForRetry(tenantId: string, transactionId: string, payload: o
  * ZRA requires each invoice to have a unique sequential number per device.
  */
 export async function getNextInvoiceNo(tenantId: string): Promise<number> {
-  const result = await pool.query(
+  const result = await fetchTenantQuery(
+    tenantId,
     `UPDATE tenant_settings
      SET zra_last_invc_no = zra_last_invc_no + 1
      WHERE tenant_id = $1
      RETURNING zra_last_invc_no`,
     [tenantId]
   );
-  return result.rows[0]?.zra_last_invc_no || 1;
+  return result[0]?.zra_last_invc_no || 1;
 }

@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic";
 import crypto from 'crypto';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { PoolClient } from 'pg';
-import { pool } from '@/lib/db';
+import { connectTenantClient } from '@/lib/db';
+import { requireTenantSession, SessionError } from '@/lib/session';
 import { normalizeSearchText, normalizeText, type ColumnMap, type ParsedSheetRow } from '@/lib/smart-import';
 
 type ReceiveItem = {
@@ -168,10 +168,10 @@ function buildLabelPayload(input: {
 }
 
 async function withTenantClient<T>(tenantId: string, work: (client: PoolClient) => Promise<T>) {
-  const client = await pool.connect();
+  const client = await connectTenantClient();
   try {
     await client.query('BEGIN');
-    await client.query(`SET LOCAL app.current_tenant = '${tenantId}'`);
+    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId]);
     const result = await work(client);
     await client.query('COMMIT');
     return result;
@@ -875,17 +875,35 @@ async function processLegacyOrQuickReceive(
 
 export async function POST(req: Request) {
   try {
-    const tenantId = cookies().get('tenant_id')?.value;
-    const staffId = cookies().get('staff_id')?.value;
-    const staffRole = cookies().get('staff_role')?.value || 'stock_clerk';
-
-    if (!tenantId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (!staffId) return NextResponse.json({ error: 'Operations session required.' }, { status: 401 });
+    const session = await requireTenantSession(['owner', 'store_manager', 'stock_clerk']);
+    const tenantId = session.tenantId;
+    const staffId = session.staffId;
+    const staffRole = session.role;
 
     const body = await req.json();
     const locationId = String(body?.location_id || '').trim();
+    if (!locationId) return NextResponse.json({ error: 'Store location is required.' }, { status: 400 });
 
     const result = await withTenantClient(tenantId, async (client) => {
+      const actor = await client.query(
+        `SELECT id, location_id
+         FROM staff
+         WHERE id = $1 AND tenant_id = $2 AND role = $3 AND is_active = true`,
+        [staffId, tenantId, staffRole]
+      );
+      if (actor.rowCount !== 1) throw new ReceiveHttpError('Operations session is no longer active.', 401);
+
+      const location = await client.query(
+        `SELECT id
+         FROM locations
+         WHERE id = $1 AND tenant_id = $2 AND is_active = true`,
+        [locationId, tenantId]
+      );
+      if (location.rowCount !== 1) throw new ReceiveHttpError('Invalid store location.', 400);
+      if (staffRole !== 'owner' && actor.rows[0].location_id !== locationId) {
+        throw new ReceiveHttpError('You can only receive stock at your assigned store.', 403);
+      }
+
       const caps = await loadReceiveSchemaCaps(client);
       if (body?.sheet_import) {
         return await processSheetImport(
@@ -909,6 +927,9 @@ export async function POST(req: Request) {
       variant: result.createdVariant || null,
     });
   } catch (err) {
+    if (err instanceof SessionError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     if (err instanceof ReceiveHttpError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }

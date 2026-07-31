@@ -1,22 +1,19 @@
 import MetricCard from '@/components/MetricCard';
 import SalesTrendChart from '@/components/SalesTrendChart';
 import LiveActivity from '@/components/LiveActivity';
-import { requireTenantId, fetchTenantQuery } from '@/lib/db';
-import { cookies } from 'next/headers';
+import { fetchTenantQuery } from '@/lib/db';
+import { getVerifiedSession } from '@/lib/session';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
   // --- REAL DATA FETCHING WITH RLS ---
-  const cookieStore = cookies();
-  const tenantId = cookieStore.get('tenant_id')?.value;
-
-  if (!tenantId) {
+  const session = await getVerifiedSession();
+  if (!session?.tenantId || session.role !== 'owner') {
     redirect('/login');
   }
-
-  const safeTenantId = requireTenantId(tenantId);
+  const safeTenantId = session.tenantId;
   
   // 1. Recent Transactions (Enforced by RLS)
   const recentTransactions = await fetchTenantQuery(safeTenantId, `

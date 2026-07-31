@@ -1,28 +1,35 @@
 export const dynamic = "force-dynamic";
 import { fetchTenantQuery } from '@/lib/db';
+import { hashPin, validPin } from '@/lib/pin';
+import { requireTenantSession, SessionError } from '@/lib/session';
+import { IdentityConflictError, withIdentityEmailLock } from '@/lib/identity-lock';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 
-function getTenantId() {
-  const t = cookies().get('tenant_id')?.value;
-  if (!t) throw new Error('Unauthorized');
-  return t;
+const ADMIN_ROLES = ['owner', 'store_manager'] as const;
+
+async function assertLocation(tenantId: string, locationId?: string | null) {
+  if (!locationId) return;
+  const locations = await fetchTenantQuery(tenantId, 'SELECT id FROM locations WHERE id = $1 AND tenant_id = $2 AND is_active = true', [locationId, tenantId]);
+  if (!locations.length) throw new SessionError('Location does not belong to this tenant', 400);
 }
 
 // GET all staff for this tenant
 export async function GET() {
   try {
-    const tenantId = getTenantId();
+    const session = await requireTenantSession(ADMIN_ROLES);
+    const tenantId = session.tenantId;
+    const locationId = session.role === 'owner' ? null : session.locationId;
     const rows = await fetchTenantQuery(tenantId, `
-      SELECT s.id, s.name, s.email, s.role, s.is_active,
+      SELECT s.id, s.name, s.email, s.role, s.is_active, s.location_id,
              l.name as location_name
       FROM staff s
-      LEFT JOIN locations l ON s.location_id = l.id
+      LEFT JOIN locations l ON s.location_id = l.id AND l.tenant_id = s.tenant_id
+      WHERE ($1::uuid IS NULL OR s.location_id = $1)
       ORDER BY s.created_at ASC
-    `);
+    `, [locationId]);
     return NextResponse.json(rows);
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Staff GET]', err);
     return NextResponse.json({ error: 'Failed to load staff' }, { status: 500 });
   }
@@ -31,24 +38,35 @@ export async function GET() {
 // POST: create staff member
 export async function POST(req: Request) {
   try {
-    const tenantId = getTenantId();
+    const { tenantId } = await requireTenantSession(['owner']);
     const { name, email, role, pin, location_id } = await req.json();
 
     if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     if (!role)         return NextResponse.json({ error: 'Role is required' }, { status: 400 });
-    if (!pin || !/^\d{4}$/.test(pin)) return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 });
+    if (!validPin(pin)) return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 });
     if (!['owner','store_manager','cashier','stock_clerk'].includes(role))
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+    if (role !== 'owner' && !location_id) {
+      return NextResponse.json({ error: 'This role must be assigned to a store location' }, { status: 400 });
+    }
 
-    const rows = await fetchTenantQuery(tenantId, `
-      INSERT INTO staff (tenant_id, name, email, role, pin_hash, location_id, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, true)
-      RETURNING id, name, email, role, is_active
-    `, [tenantId, name.trim(), email?.trim() || null, role, pin, location_id || null]);
+    const normalizedEmail = email?.trim()?.toLocaleLowerCase() || null;
+    if (!normalizedEmail || normalizedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return NextResponse.json({ error: 'A valid email is required for staff login' }, { status: 400 });
+    }
+    await assertLocation(tenantId, location_id);
+    const pinHash = await hashPin(pin);
+
+    const rows = await withIdentityEmailLock(normalizedEmail, {}, () => fetchTenantQuery(tenantId, `
+        INSERT INTO staff (tenant_id, name, email, role, pin_hash, location_id, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6, true)
+        RETURNING id, name, email, role, is_active
+      `, [tenantId, name.trim(), normalizedEmail, role, pinHash, location_id || null]));
 
     return NextResponse.json({ success: true, staff: rows[0] });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
+    if (err instanceof IdentityConflictError) return NextResponse.json({ error: err.message }, { status: 409 });
     if (err.code === '23505') return NextResponse.json({ error: 'A staff member with this email already exists in this store' }, { status: 409 });
     console.error('[Staff POST]', err);
     return NextResponse.json({ error: 'Failed to create staff member' }, { status: 500 });
@@ -58,15 +76,43 @@ export async function POST(req: Request) {
 // PATCH: update a staff member
 export async function PATCH(req: Request) {
   try {
-    const tenantId = getTenantId();
+    const session = await requireTenantSession(['owner']);
+    const tenantId = session.tenantId;
     const body = await req.json();
     const { id, name, email, role, pin, is_active, location_id } = body;
 
     if (!id) return NextResponse.json({ error: 'Staff ID is required' }, { status: 400 });
+    if (is_active !== undefined && typeof is_active !== 'boolean') {
+      return NextResponse.json({ error: 'Invalid active status' }, { status: 400 });
+    }
+    if (id === session.staffId && role !== undefined && role !== 'owner') {
+      return NextResponse.json({ error: 'You cannot remove your own owner role' }, { status: 400 });
+    }
+    if (id === session.staffId && is_active === false) {
+      return NextResponse.json({ error: 'You cannot deactivate your own account' }, { status: 400 });
+    }
+
+    const existingRows = await fetchTenantQuery(tenantId, `
+      SELECT role, location_id
+      FROM staff
+      WHERE id = $1 AND tenant_id = $2
+      LIMIT 1
+    `, [id, tenantId]);
+    if (!existingRows.length) {
+      return NextResponse.json({ error: 'Staff member not found or access denied' }, { status: 404 });
+    }
+    const nextRole = role === undefined ? existingRows[0].role : role;
+    const nextLocationId = location_id === undefined
+      ? existingRows[0].location_id
+      : (location_id || null);
+    if (nextRole !== 'owner' && !nextLocationId) {
+      return NextResponse.json({ error: 'This role must be assigned to a store location' }, { status: 400 });
+    }
 
     // Build parameterized SET clauses safely
     const setClauses: string[] = [];
     const params: any[] = [];
+    let normalizedEmailForLock: string | null = null;
 
     const add = (col: string, val: any) => {
       params.push(val);
@@ -74,31 +120,57 @@ export async function PATCH(req: Request) {
     };
 
     if (name        !== undefined) add('name',        name.trim());
-    if (email       !== undefined) add('email',       email?.trim() || null);
-    if (role        !== undefined) add('role',        role);
+    if (email !== undefined) {
+      const normalizedEmail = email?.trim()?.toLocaleLowerCase() || null;
+      if (!normalizedEmail || normalizedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        return NextResponse.json({ error: 'A valid email is required for staff login' }, { status: 400 });
+      }
+      normalizedEmailForLock = normalizedEmail;
+      add('email', normalizedEmail);
+    }
+    if (role !== undefined) {
+      if (!['owner','store_manager','cashier','stock_clerk'].includes(role)) {
+        return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+      }
+      add('role', role);
+    }
     if (pin         !== undefined && pin !== '') {
-      if (!/^\d{4}$/.test(pin)) return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 });
-      add('pin_hash', pin);
+      if (!validPin(pin)) return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 });
+      add('pin_hash', await hashPin(pin));
+      setClauses.push(
+        'failed_login_attempts = 0',
+        'lockout_until = NULL',
+        'auth_version = auth_version + 1'
+      );
     }
     if (is_active   !== undefined) add('is_active',   is_active);
-    if (location_id !== undefined) add('location_id', location_id || null);
+    if (location_id !== undefined) {
+      await assertLocation(tenantId, location_id);
+      add('location_id', location_id || null);
+    }
 
     if (setClauses.length === 0) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
     setClauses.push('updated_at = NOW()');
     params.push(id); // last param = the staff id
+    params.push(tenantId);
 
-    const rows = await fetchTenantQuery(tenantId, `
-      UPDATE staff
-      SET ${setClauses.join(', ')}
-      WHERE id = $${params.length}
-      RETURNING id, name, email, role, is_active
-    `, params);
+    const rows = await withIdentityEmailLock(
+      normalizedEmailForLock,
+      { excludeStaffId: id },
+      () => fetchTenantQuery(tenantId, `
+        UPDATE staff
+        SET ${setClauses.join(', ')}
+        WHERE id = $${params.length - 1} AND tenant_id = $${params.length}
+        RETURNING id, name, email, role, is_active
+      `, params)
+    );
 
     if (!rows.length) return NextResponse.json({ error: 'Staff member not found or access denied' }, { status: 404 });
     return NextResponse.json({ success: true, staff: rows[0] });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
+    if (err instanceof IdentityConflictError) return NextResponse.json({ error: err.message }, { status: 409 });
     console.error('[Staff PATCH]', err);
     return NextResponse.json({ error: 'Failed to update staff member' }, { status: 500 });
   }
@@ -107,17 +179,19 @@ export async function PATCH(req: Request) {
 // DELETE: soft-deactivate
 export async function DELETE(req: Request) {
   try {
-    const tenantId = getTenantId();
+    const session = await requireTenantSession(['owner']);
+    const tenantId = session.tenantId;
     const { id } = await req.json();
     if (!id) return NextResponse.json({ error: 'Staff ID required' }, { status: 400 });
+    if (id === session.staffId) return NextResponse.json({ error: 'You cannot deactivate your own account' }, { status: 400 });
 
     await fetchTenantQuery(tenantId, `
-      UPDATE staff SET is_active = false, updated_at = NOW() WHERE id = $1
-    `, [id]);
+      UPDATE staff SET is_active = false, updated_at = NOW() WHERE id = $1 AND tenant_id = $2
+    `, [id, tenantId]);
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Staff DELETE]', err);
     return NextResponse.json({ error: 'Failed to deactivate staff member' }, { status: 500 });
   }

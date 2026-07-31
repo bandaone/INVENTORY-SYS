@@ -1,6 +1,6 @@
 import { fetchTenantQuery } from '@/lib/db';
 import Link from 'next/link';
-import { cookies } from 'next/headers';
+import { getVerifiedSession } from '@/lib/session';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
@@ -10,14 +10,13 @@ export default async function InventoryPage({
 }: {
   searchParams?: { q?: string };
 }) {
-  const cookieStore = cookies();
-  const tenantId = cookieStore.get('tenant_id')?.value;
-  const query = String(searchParams?.q || '').trim();
-  const queryTerm = query.toLowerCase();
-
-  if (!tenantId) {
+  const session = await getVerifiedSession();
+  if (!session?.tenantId || session.role !== 'owner') {
     redirect('/login');
   }
+  const tenantId = session.tenantId;
+  const query = String(searchParams?.q || '').trim();
+  const queryTerm = query.toLowerCase();
 
   const whereClause = queryTerm
     ? `

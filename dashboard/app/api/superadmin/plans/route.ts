@@ -1,36 +1,26 @@
 export const dynamic = "force-dynamic";
 import { adminPool } from '@/lib/db';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-
-async function checkSuperadmin() {
-  const cookieStore = cookies();
-  const staffRole = cookieStore.get('staff_role')?.value;
-  if (staffRole !== 'superadmin') {
-    return false;
-  }
-  return true;
-}
+import { requirePlatformSession, SessionError } from '@/lib/session';
 
 export async function GET() {
-  if (!(await checkSuperadmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  
   try {
+    await requirePlatformSession();
     const result = await adminPool.query(`
       SELECT * FROM subscription_plans 
       ORDER BY price_zmw ASC
     `);
     return NextResponse.json(result.rows);
   } catch (error) {
+    if (error instanceof SessionError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('Error fetching plans:', error);
     return NextResponse.json({ error: 'Failed to fetch plans' }, { status: 500 });
   }
 }
 
 export async function PUT(req: Request) {
-  if (!(await checkSuperadmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  
   try {
+    await requirePlatformSession();
     const { id, price_zmw, max_locations, max_users, features } = await req.json();
     
     await adminPool.query(`
@@ -45,6 +35,7 @@ export async function PUT(req: Request) {
     
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof SessionError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('Error updating plan:', error);
     return NextResponse.json({ error: 'Failed to update plan' }, { status: 500 });
   }

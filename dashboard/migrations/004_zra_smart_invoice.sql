@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS zra_sync_queue (
   attempts       INTEGER     DEFAULT 0,
   last_error     TEXT,
   created_at     TIMESTAMPTZ DEFAULT NOW(),
+  claimed_at     TIMESTAMPTZ,
   synced_at      TIMESTAMPTZ
 );
 

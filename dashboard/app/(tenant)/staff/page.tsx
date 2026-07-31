@@ -8,6 +8,7 @@ interface StaffMember {
   email: string;
   role: string;
   is_active: boolean;
+  location_id: string | null;
   location_name: string | null;
 }
 
@@ -56,24 +57,28 @@ export default function StaffPage() {
 
   const openAdd = () => {
     setEditTarget(null);
-    setForm({ name: '', email: '', role: 'cashier', pin: '', location_id: '' });
+    setForm({ name: '', email: '', role: 'cashier', pin: '', location_id: locations[0]?.id || '' });
     setError(''); setShowPin(false); setShowModal(true);
   };
 
   const openEdit = (s: StaffMember) => {
     setEditTarget(s);
-    setForm({ name: s.name, email: s.email || '', role: s.role, pin: '', location_id: '' });
+    setForm({ name: s.name, email: s.email || '', role: s.role, pin: '', location_id: s.location_id || '' });
     setError(''); setShowPin(false); setShowModal(true);
   };
 
   const handleSave = async () => {
     setError('');
     if (!form.name.trim()) { setError('Name is required'); return; }
+    if (!form.email.trim()) { setError('Email is required for staff login'); return; }
     if (!editTarget && (!form.pin || !/^\d{4}$/.test(form.pin))) {
       setError('A 4-digit numeric PIN is required for new staff'); return;
     }
     if (form.pin && !/^\d{4}$/.test(form.pin)) {
       setError('PIN must be exactly 4 digits'); return;
+    }
+    if (form.role !== 'owner' && !form.location_id) {
+      setError('Choose the store location this staff member works at'); return;
     }
 
     setSaving(true);
@@ -83,9 +88,14 @@ export default function StaffPage() {
 
       if (editTarget) {
         // Edit: only send changed fields
-        body = { id: editTarget.id, name: form.name, email: form.email, role: form.role };
+        body = {
+          id: editTarget.id,
+          name: form.name,
+          email: form.email,
+          role: form.role,
+          location_id: form.location_id || null,
+        };
         if (form.pin) body.pin = form.pin;
-        if (form.location_id) body.location_id = form.location_id;
         method = 'PATCH';
       } else {
         body = { ...form };
@@ -237,7 +247,7 @@ export default function StaffPage() {
 
               {/* Email */}
               <div>
-                <label style={labelStyle}>Email Address</label>
+                <label style={labelStyle}>Email Address *</label>
                 <input
                   style={inputStyle} type="email" value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
@@ -258,15 +268,27 @@ export default function StaffPage() {
               </div>
 
               {/* Location */}
-              {locations.length > 0 && (
-                <div>
-                  <label style={labelStyle}>Assign to Location</label>
-                  <select style={inputStyle} value={form.location_id} onChange={e => setForm(f => ({ ...f, location_id: e.target.value }))}>
-                    <option value="">— No specific location —</option>
-                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
-                </div>
-              )}
+              <div>
+                <label style={labelStyle}>
+                  Store Location {form.role !== 'owner' ? '*' : '(optional)'}
+                </label>
+                <select
+                  style={inputStyle}
+                  value={form.location_id}
+                  disabled={locations.length === 0}
+                  onChange={e => setForm(f => ({ ...f, location_id: e.target.value }))}
+                >
+                  <option value="">
+                    {locations.length === 0 ? '— Create a location first —' : '— No specific location —'}
+                  </option>
+                  {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+                {locations.length === 0 && (
+                  <p style={{ fontSize: '12px', color: 'var(--danger)', marginTop: '6px' }}>
+                    Add an active store location in Settings before creating operational staff.
+                  </p>
+                )}
+              </div>
 
               {/* PIN with show/hide */}
               <div>

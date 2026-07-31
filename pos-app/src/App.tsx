@@ -45,7 +45,6 @@ export default function App() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [pinEntry, setPinEntry] = useState('');
   const [emailEntry, setEmailEntry] = useState('');
-  const [showEmailField, setShowEmailField] = useState(false);
 
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [catalogError, setCatalogError] = useState('');
@@ -148,6 +147,10 @@ export default function App() {
   };
 
   const handleLogin = async () => {
+    if (!emailEntry.trim()) {
+      setLoginError('Email is required to identify the correct store');
+      return;
+    }
     if (pinEntry.length !== 4) {
       setLoginError('PIN must be 4 digits');
       return;
@@ -155,8 +158,7 @@ export default function App() {
     setLoginLoading(true);
     setLoginError('');
     try {
-      const body: any = { pin: pinEntry };
-      if (emailEntry.trim()) body.email = emailEntry.trim();
+      const body = { pin: pinEntry, email: emailEntry.trim() };
 
       const res = await fetch(`${API}/api/pos/login`, {
         method: 'POST',
@@ -363,29 +365,22 @@ export default function App() {
 
             {loginError && <div style={{ color: 'var(--danger)', fontSize: '13px', textAlign: 'center', marginBottom: '12px' }}>{loginError}</div>}
 
-            {showEmailField && (
-              <input
-                type="email"
-                placeholder="Your email (if first login)"
-                value={emailEntry}
-                onChange={(e) => setEmailEntry(e.target.value)}
-                style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-color)', border: '1px solid var(--panel-border)', color: 'var(--text-main)', borderRadius: '8px', fontFamily: 'Outfit, sans-serif', fontSize: '14px', marginBottom: '12px' }}
-              />
-            )}
+            <input
+              type="email"
+              placeholder="Staff email"
+              value={emailEntry}
+              onChange={(e) => setEmailEntry(e.target.value)}
+              autoComplete="username"
+              style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-color)', border: '1px solid var(--panel-border)', color: 'var(--text-main)', borderRadius: '8px', fontFamily: 'Outfit, sans-serif', fontSize: '14px', marginBottom: '12px' }}
+            />
 
             <button
               onClick={handleLogin}
-              disabled={loginLoading || pinEntry.length < 4}
-              style={{ width: '100%', padding: '14px', background: pinEntry.length === 4 ? 'var(--primary)' : 'var(--hover-bg)', color: pinEntry.length === 4 ? '#0f1115' : 'var(--text-muted)', border: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '16px', cursor: pinEntry.length < 4 ? 'not-allowed' : 'pointer', transition: 'all 0.2s', fontFamily: 'Outfit, sans-serif' }}
+              disabled={loginLoading || pinEntry.length < 4 || !emailEntry.trim()}
+              style={{ width: '100%', padding: '14px', background: pinEntry.length === 4 && emailEntry.trim() ? 'var(--primary)' : 'var(--hover-bg)', color: pinEntry.length === 4 && emailEntry.trim() ? '#0f1115' : 'var(--text-muted)', border: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '16px', cursor: pinEntry.length < 4 || !emailEntry.trim() ? 'not-allowed' : 'pointer', transition: 'all 0.2s', fontFamily: 'Outfit, sans-serif' }}
             >
               {loginLoading ? 'Verifying...' : 'Start Shift'}
             </button>
-
-            <div style={{ textAlign: 'center', marginTop: '16px' }}>
-              <button onClick={() => setShowEmailField((v) => !v)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer', textDecoration: 'underline' }}>
-                {showEmailField ? 'Hide email field' : 'First time on this device? Enter email too'}
-              </button>
-            </div>
           </div>
         </div>
       </div>

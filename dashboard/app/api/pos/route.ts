@@ -1,7 +1,20 @@
 export const dynamic = "force-dynamic";
-import { fetchTenantQuery, pool } from '@/lib/db';
+import { connectTenantClient, fetchTenantQuery } from '@/lib/db';
+import { requireTenantSession, SessionError } from '@/lib/session';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+
+const POS_ROLES = ['owner', 'store_manager', 'cashier'] as const;
+type PosRole = (typeof POS_ROLES)[number];
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+class PosError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
 
 interface CartItem {
   variant_id: string;
@@ -12,49 +25,125 @@ interface CartItem {
   serial?: string | null;
 }
 
+async function requireActivePosSession() {
+  const session = await requireTenantSession(POS_ROLES);
+  const staffRows = await fetchTenantQuery(session.tenantId, `
+    SELECT id, role, location_id
+    FROM staff
+    WHERE id = $1
+      AND tenant_id = $2
+      AND is_active = true
+    LIMIT 1
+  `, [session.staffId, session.tenantId]);
+  const staff = staffRows[0];
+
+  if (!staff || staff.role !== session.role) {
+    throw new SessionError('Session is no longer valid');
+  }
+
+  const currentLocationId = staff.location_id || null;
+  if (currentLocationId !== session.locationId) {
+    throw new SessionError('Session location has changed. Please sign in again.');
+  }
+
+  if (!session.shiftId) {
+    throw new SessionError('An active shift is required to process a sale.', 403);
+  }
+  const shifts = await fetchTenantQuery(session.tenantId, `
+    SELECT id
+    FROM shifts
+    WHERE id = $1
+      AND tenant_id = $2
+      AND staff_id = $3
+      AND location_id IS NOT DISTINCT FROM $4::uuid
+      AND ended_at IS NULL
+    LIMIT 1
+  `, [session.shiftId, session.tenantId, session.staffId, session.locationId]);
+  if (!shifts.length) {
+    throw new SessionError('Your shift is no longer active. Please sign in again.');
+  }
+
+  return { ...session, role: session.role as PosRole };
+}
+
+async function resolveSaleLocation(
+  tenantId: string,
+  role: PosRole,
+  sessionLocationId: string | null,
+  suppliedLocationId: unknown,
+) {
+  const requestedLocationId = typeof suppliedLocationId === 'string' ? suppliedLocationId.trim() : '';
+  if (requestedLocationId && !UUID_PATTERN.test(requestedLocationId)) {
+    throw new PosError('Invalid sale location.');
+  }
+
+  if (role !== 'owner') {
+    if (!sessionLocationId) {
+      throw new SessionError('Your account has no store location assigned.', 403);
+    }
+    if (requestedLocationId && requestedLocationId !== sessionLocationId) {
+      throw new SessionError('You can only sell from your assigned location.', 403);
+    }
+  }
+
+  const locationId = role !== 'owner'
+    ? sessionLocationId
+    : requestedLocationId || sessionLocationId;
+  if (!locationId) {
+    throw new PosError('Select a sale location.');
+  }
+
+  const locations = await fetchTenantQuery(tenantId, `
+    SELECT id
+    FROM locations
+    WHERE id = $1
+      AND tenant_id = $2
+      AND is_active = true
+    LIMIT 1
+  `, [locationId, tenantId]);
+  if (!locations.length) {
+    throw new PosError('The selected sale location is not available.', 403);
+  }
+
+  return locationId;
+}
+
 export async function POST(req: Request) {
   try {
-    const cookieStore = cookies();
-    const tenantId = cookieStore.get('tenant_id')?.value;
-    const staffId = cookieStore.get('staff_id')?.value;
-    if (!tenantId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const session = await requireActivePosSession();
+    const tenantId = session.tenantId;
+    const staffId = session.staffId;
 
     const { cart, method, location_id, customer_email } = await req.json();
 
-    if (!cart || cart.length === 0) {
+    if (!Array.isArray(cart) || cart.length === 0) {
       return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
     }
-
-    // Resolve location: use provided, or first active location for this tenant
-    let locationId = location_id;
-    if (!locationId) {
-      const loc = await fetchTenantQuery(tenantId, `SELECT id FROM locations WHERE is_active = true LIMIT 1`);
-      if (!loc.length) return NextResponse.json({ error: 'No active location found for this tenant' }, { status: 400 });
-      locationId = loc[0].id;
+    if (cart.some((item: CartItem) => (
+      !item
+      || typeof item.variant_id !== 'string'
+      || !UUID_PATTERN.test(item.variant_id)
+      || !Number.isInteger(Number(item.quantity))
+      || Number(item.quantity) < 1
+      || (item.serial != null && typeof item.serial !== 'string')
+      || (item.serial != null && Number(item.quantity) !== 1)
+    ))) {
+      return NextResponse.json({ error: 'One or more cart items are invalid.' }, { status: 400 });
+    }
+    if (!['CASH', 'MOBILE_MONEY', 'SPLIT'].includes(method)) {
+      return NextResponse.json({ error: 'Invalid payment method.' }, { status: 400 });
     }
 
-    // Resolve cashier: use session cookie or first active staff
-    let cashierId = staffId;
-    if (cashierId) {
-      const cashier = await fetchTenantQuery(tenantId, `
-        SELECT id FROM staff
-        WHERE id = $1 AND is_active = true
-        LIMIT 1
-      `, [cashierId]);
-      if (!cashier.length) cashierId = '';
-    }
-
-    if (!cashierId) {
-      const staff = await fetchTenantQuery(tenantId, `SELECT id FROM staff WHERE is_active = true LIMIT 1`);
-      if (staff.length) cashierId = staff[0].id;
-    }
-
-    if (!cashierId) {
-      return NextResponse.json({ error: 'No active cashier found for this tenant' }, { status: 400 });
-    }
+    const locationId = await resolveSaleLocation(tenantId, session.role, session.locationId, location_id);
 
     // Calculate totals using the tenant's configured tax rate (Inclusive Tax Calculation)
-    const settings = await fetchTenantQuery(tenantId, `SELECT tax_rate, receipt_footer, receipt_logo_data_url, business_name, owner_phone, zra_tpin, zra_enabled, zra_vsdc_url, zra_bhf_id, zra_dvc_srl_no, zra_last_invc_no, currency FROM tenant_settings WHERE tenant_id = '${tenantId}'`).catch(() => []);
+    const settings = await fetchTenantQuery(tenantId, `
+      SELECT tax_rate, receipt_footer, receipt_logo_data_url, business_name, owner_phone,
+             zra_tpin, zra_enabled, zra_vsdc_url, zra_bhf_id, zra_dvc_srl_no,
+             zra_last_invc_no, currency
+      FROM tenant_settings
+      WHERE tenant_id = $1
+    `, [tenantId]).catch(() => []);
     const taxRate = settings[0]?.tax_rate ? Number(settings[0].tax_rate) / 100 : 0.16;
     const taxRatePercent = settings[0]?.tax_rate ? Number(settings[0].tax_rate) : 16;
     const receiptFooter = settings[0]?.receipt_footer || 'Thank you for your business!';
@@ -79,7 +168,8 @@ export async function POST(req: Request) {
         SELECT id, name, retail_price, discount_percent, category, subtype, color, size, metadata, search_text
         FROM variants
         WHERE id = ANY($1)
-      `, [variantIds])
+          AND tenant_id = $2
+      `, [variantIds, tenantId])
       : [];
     const variantsById = new Map(catalogRows.map((row: any) => [row.id, row]));
 
@@ -94,8 +184,8 @@ export async function POST(req: Request) {
       const variant = variantsById.get(item.variant_id);
       const basePrice = Number(variant?.retail_price ?? item.price ?? 0);
       const autoDiscount = Number(variant?.discount_percent ?? 0);
-      const manualDiscount = Number.isFinite(Number(item.discount_percent)) ? Math.max(0, Math.min(100, Number(item.discount_percent))) : 0;
-      const discountPercent = Math.max(autoDiscount, manualDiscount);
+      // Discounts are catalog policy, not a cashier-controlled request field.
+      const discountPercent = Math.max(0, Math.min(100, autoDiscount));
       const discountAmount = basePrice * (discountPercent / 100);
       const unitPrice = basePrice - discountAmount;
       const lineTotal = unitPrice * item.quantity;
@@ -116,23 +206,27 @@ export async function POST(req: Request) {
     const subtotal = total - tax;
 
     // STRICT INVENTORY VALIDATION & TRANSACTION LOCKING
-    const client = await pool.connect();
+    const client = await connectTenantClient();
     let txId = '';
     const receiptNum = `RCP-${Date.now().toString(36).toUpperCase()}`;
 
     try {
       await client.query('BEGIN');
-      await client.query(`SET LOCAL app.current_tenant = '${tenantId}'`);
+      await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId]);
 
       for (const item of cartPricing) {
         if (item.serial) {
           const stock = await client.query(`
             SELECT serial, variant_id, status, location_id
             FROM garments
-            WHERE serial = $1 AND status = 'in_stock' AND location_id = $2
+            WHERE tenant_id = $1
+              AND serial = $2
+              AND variant_id = $3
+              AND status = 'in_stock'
+              AND location_id = $4
             FOR UPDATE
             LIMIT 1
-          `, [item.serial, locationId]);
+          `, [tenantId, item.serial, item.variant_id, locationId]);
 
           if (!stock.rows.length) {
             throw new Error(`The selected item ${item.name} is no longer available.`);
@@ -142,10 +236,13 @@ export async function POST(req: Request) {
 
         const stock = await client.query(`
           SELECT serial FROM garments 
-          WHERE variant_id = $1 AND status = 'in_stock' AND location_id = $2
+          WHERE tenant_id = $1
+            AND variant_id = $2
+            AND status = 'in_stock'
+            AND location_id = $3
           FOR UPDATE SKIP LOCKED
-          LIMIT $3
-        `, [item.variant_id, locationId, item.quantity]);
+          LIMIT $4
+        `, [tenantId, item.variant_id, locationId, item.quantity]);
         
         if (stock.rows.length < item.quantity) {
           throw new Error(`Insufficient stock for ${item.name}. You tried to sell ${item.quantity}, but only ${stock.rows.length} are available.`);
@@ -157,7 +254,7 @@ export async function POST(req: Request) {
         INSERT INTO transactions (tenant_id, receipt_number, location_id, cashier_id, payment_method, subtotal, tax, total)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id, receipt_number
-      `, [tenantId, receiptNum, locationId, cashierId || null, method, subtotal, tax, total]);
+      `, [tenantId, receiptNum, locationId, staffId, method, subtotal, tax, total]);
 
       txId = txResult.rows[0].id;
 
@@ -170,43 +267,48 @@ export async function POST(req: Request) {
         } else {
            const lockedStock = await client.query(`
              SELECT serial FROM garments
-             WHERE variant_id = $1 AND status = 'in_stock' AND location_id = $2
+             WHERE tenant_id = $1
+               AND variant_id = $2
+               AND status = 'in_stock'
+               AND location_id = $3
              FOR UPDATE SKIP LOCKED
-             LIMIT $3
-           `, [item.variant_id, locationId, item.quantity]);
+             LIMIT $4
+           `, [tenantId, item.variant_id, locationId, item.quantity]);
            garmentsToSell.push(...lockedStock.rows.map(r => r.serial));
         }
 
-        let qCount = 0;
+        if (garmentsToSell.length !== item.quantity) {
+          throw new Error(`Insufficient stock for ${item.name}. Refresh the cart and try again.`);
+        }
+
         for (const serial of garmentsToSell) {
           // Mark garment sold
-          await client.query(`
-            UPDATE garments SET status = 'sold', updated_at = NOW() WHERE serial = $1
-          `, [serial]);
+          const updatedGarment = await client.query(`
+            UPDATE garments
+            SET status = 'sold', updated_at = NOW()
+            WHERE tenant_id = $1
+              AND serial = $2
+              AND variant_id = $3
+              AND location_id = $4
+              AND status = 'in_stock'
+          `, [tenantId, serial, item.variant_id, locationId]);
+          if (updatedGarment.rowCount !== 1) {
+            throw new Error(`The selected item ${item.name} is no longer available.`);
+          }
           // Record transaction item
           await client.query(`
             INSERT INTO transaction_items (transaction_id, garment_serial, variant_id, unit_price, discount_percent, discount_amount, total_price, quantity)
             VALUES ($1, $2, $3, $4, $5, $6, $7, 1)
           `, [txId, serial, item.variant_id, item.unitPrice, item.discountPercent, item.discountAmount, item.lineTotal / item.quantity]);
-          qCount++;
         }
 
-        while (qCount < item.quantity) {
-          // Fallback: If no physical stock exists but cashier sold it anyway
-          await client.query(`
-            INSERT INTO transaction_items (transaction_id, description, variant_id, unit_price, discount_percent, discount_amount, total_price, quantity)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 1)
-          `, [txId, 'Manual/Missing Stock: ' + item.name, item.variant_id, item.unitPrice, item.discountPercent, item.discountAmount, item.lineTotal / item.quantity]);
-          qCount++;
-        }
       }
 
       // Insert audit log
-      const staffRole = cookieStore.get('staff_role')?.value || 'cashier';
       await client.query(`
         INSERT INTO audit_trail (tenant_id, action_type, actor_id, actor_role, resource_type, resource_id, changes)
         VALUES ($1, 'SALE_COMPLETED', $2, $3, 'transaction', $4, $5)
-      `, [tenantId, cashierId || null, staffRole, txId, JSON.stringify({ receipt_number: receiptNum, gross_total: grossTotal, discount_total: discountTotal, total, method })]);
+      `, [tenantId, staffId, session.role, txId, JSON.stringify({ receipt_number: receiptNum, gross_total: grossTotal, discount_total: discountTotal, total, method })]);
 
       await client.query('COMMIT');
     } catch (e: any) {
@@ -302,6 +404,9 @@ export async function POST(req: Request) {
       zraQueued,
     });
   } catch (error) {
+    if (error instanceof SessionError || error instanceof PosError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('[POS Checkout Error]', error);
     return NextResponse.json({ error: 'Failed to process sale' }, { status: 500 });
   }

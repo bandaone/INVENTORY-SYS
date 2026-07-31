@@ -1,26 +1,23 @@
 export const dynamic = "force-dynamic";
-import { adminPool } from '@/lib/db';
+import { connectTenantClient } from '@/lib/db';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import type { PoolClient } from 'pg';
 import crypto from 'crypto';
+import { requireTenantSession, SessionError } from '@/lib/session';
 
-function getTenantId() {
-  const tenantId = cookies().get('tenant_id')?.value;
-  if (!tenantId) throw new Error('Unauthorized');
-  return tenantId;
-}
+const TRANSFER_ROLES = ['owner', 'store_manager', 'stock_clerk'] as const;
 
 export async function POST(req: Request) {
-  const client = await adminPool.connect();
+  let client: PoolClient | null = null;
   let inTransaction = false;
 
   try {
-    const tenantId = getTenantId();
-    const staffId = cookies().get('staff_id')?.value;
-    const staffRole = cookies().get('staff_role')?.value || 'stock_clerk';
+    const session = await requireTenantSession(TRANSFER_ROLES);
+    const tenantId = session.tenantId;
+    const staffId = session.staffId;
+    const staffRole = session.role;
     const { location_id, serials } = await req.json();
 
-    if (!staffId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     if (!location_id) return NextResponse.json({ error: 'Destination location is required' }, { status: 400 });
     if (!Array.isArray(serials) || serials.length === 0) {
       return NextResponse.json({ error: 'Select at least one serial to accept' }, { status: 400 });
@@ -33,8 +30,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Select at least one valid serial' }, { status: 400 });
     }
 
+    client = await connectTenantClient();
     await client.query('BEGIN');
     inTransaction = true;
+    await client.query(`SELECT set_config('app.current_tenant', $1, true)`, [tenantId]);
+
+    const actor = await client.query(
+      `SELECT id, location_id FROM staff
+       WHERE id = $1 AND tenant_id = $2 AND role = $3 AND is_active = true`,
+      [staffId, tenantId, staffRole]
+    );
+    if (actor.rowCount !== 1) throw new SessionError('Operations session is no longer active');
+    if (staffRole !== 'owner' && actor.rows[0].location_id !== location_id) {
+      await client.query('ROLLBACK');
+      inTransaction = false;
+      return NextResponse.json({ error: 'You can only accept stock into your assigned store' }, { status: 403 });
+    }
 
     const locationRes = await client.query(
       'SELECT id, name FROM locations WHERE id = $1 AND tenant_id = $2 AND is_active = true',
@@ -134,12 +145,15 @@ export async function POST(req: Request) {
       destination_status: 'in_stock',
     });
   } catch (error) {
-    if (inTransaction) {
+    if (inTransaction && client) {
       await client.query('ROLLBACK');
+    }
+    if (error instanceof SessionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error('[Transfers Accept Error]', error);
     return NextResponse.json({ error: 'Failed to accept transfer stock' }, { status: 500 });
   } finally {
-    client.release();
+    client?.release();
   }
 }

@@ -1,83 +1,96 @@
-export const dynamic = "force-dynamic";
-import { pool } from '@/lib/db';
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+export const dynamic = 'force-dynamic'
+
+import { adminPool } from '@/lib/db'
+import { requireTenantSession, SessionError } from '@/lib/session'
+import { NextResponse } from 'next/server'
 
 export async function POST(req: Request) {
   try {
-    const { transaction_id } = await req.json();
+    const { tenantId } = await requireTenantSession(['owner'], { allowSuspended: true })
+    const { transaction_id } = await req.json()
     if (!transaction_id) {
-      return NextResponse.json({ error: 'Missing transaction_id' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing transaction_id' }, { status: 400 })
     }
 
-    const cookieStore = cookies();
-    const tenantId = cookieStore.get('tenant_id')?.value;
-    if (!tenantId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const secret = process.env.FLUTTERWAVE_SECRET_KEY
+    if (!secret) {
+      return NextResponse.json({ error: 'Payment provider is not configured' }, { status: 503 })
     }
 
-    // 1. Call Flutterwave to securely verify the transaction status and amount
-    const FLW_SECRET = process.env.FLUTTERWAVE_SECRET_KEY || 'FLWSECK_TEST-SANDBOXDEMOKEY-X';
-    const flwRes = await fetch(`https://api.flutterwave.com/v3/transactions/${transaction_id}/verify`, {
+    const response = await fetch(`https://api.flutterwave.com/v3/transactions/${encodeURIComponent(String(transaction_id))}/verify`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${FLW_SECRET}`,
-        'Content-Type': 'application/json'
+      headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) return NextResponse.json({ error: 'Payment verification failed' }, { status: 400 })
+
+    const verified = await response.json()
+    if (verified?.status !== 'success' || verified?.data?.status !== 'successful') {
+      return NextResponse.json({ error: 'Payment verification failed' }, { status: 400 })
+    }
+
+    const referenceId = String(verified.data.tx_ref || '')
+    const client = await adminPool.connect()
+    let newEndDate: Date
+    try {
+      await client.query('BEGIN')
+      const pending = await client.query(`
+        SELECT id, amount, currency
+        FROM billing_history
+        WHERE tenant_id = $1 AND reference_id = $2 AND status = 'PENDING'
+        LIMIT 1
+        FOR UPDATE
+      `, [tenantId, referenceId])
+      if ((pending.rowCount ?? 0) !== 1) {
+        await client.query('ROLLBACK')
+        return NextResponse.json({ error: 'No matching pending payment was found' }, { status: 409 })
       }
-    });
 
-    const flwData = await flwRes.json();
-    
-    // Check if flutterwave says it was successful
-    if (flwData.status !== 'success' || flwData.data.status !== 'successful') {
-      console.error('Flutterwave verification failed:', flwData);
-      return NextResponse.json({ error: 'Payment verification failed' }, { status: 400 });
+      const expectedAmount = Number(pending.rows[0].amount)
+      const paidAmount = Number(verified.data.amount)
+      const expectedCurrency = String(pending.rows[0].currency || '').toUpperCase()
+      const paidCurrency = String(verified.data.currency || '').toUpperCase()
+      if (!Number.isFinite(paidAmount) || paidAmount < expectedAmount || paidCurrency !== expectedCurrency) {
+        await client.query('ROLLBACK')
+        return NextResponse.json({ error: 'Verified payment does not match the pending invoice' }, { status: 409 })
+      }
+
+      const tenant = await client.query(`
+        SELECT subscription_end_date FROM tenants WHERE id = $1 FOR UPDATE
+      `, [tenantId])
+      if ((tenant.rowCount ?? 0) !== 1) throw new Error('Tenant not found')
+
+      newEndDate = new Date()
+      const existingEndDate = tenant.rows[0].subscription_end_date
+        ? new Date(tenant.rows[0].subscription_end_date)
+        : null
+      if (existingEndDate && existingEndDate > newEndDate) newEndDate = existingEndDate
+      newEndDate.setDate(newEndDate.getDate() + 30)
+
+      await client.query(`
+        UPDATE billing_history
+        SET status = 'SUCCESSFUL', metadata = $1, updated_at = NOW()
+        WHERE id = $2 AND tenant_id = $3 AND status = 'PENDING'
+      `, [JSON.stringify(verified.data), pending.rows[0].id, tenantId])
+      await client.query(`
+        UPDATE tenants
+        SET status = 'ACTIVE', subscription_end_date = $1, updated_at = NOW()
+        WHERE id = $2
+      `, [newEndDate, tenantId])
+      await client.query('COMMIT')
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined)
+      throw error
+    } finally {
+      client.release()
     }
 
-    const amountPaid = flwData.data.amount;
-    const currency = flwData.data.currency;
-
-    // 2. Fetch current tenant status
-    const tenantRes = await pool.query('SELECT status, subscription_end_date FROM tenants WHERE id = $1', [tenantId]);
-    if (tenantRes.rows.length === 0) {
-      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 });
+    return NextResponse.json({ success: true, newEndDate })
+  } catch (error) {
+    if (error instanceof SessionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
     }
-
-    // 3. Add 30 days to the subscription
-    let newEndDate = new Date();
-    if (tenantRes.rows[0].subscription_end_date && new Date(tenantRes.rows[0].subscription_end_date) > new Date()) {
-      newEndDate = new Date(tenantRes.rows[0].subscription_end_date);
-    }
-    newEndDate.setDate(newEndDate.getDate() + 30);
-
-    // 4. Record transaction in database
-    await pool.query(`
-      INSERT INTO billing_history 
-      (tenant_id, event_type, amount, currency, status, reference_id, metadata)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-    `, [
-      tenantId, 
-      'subscription_payment', 
-      amountPaid, 
-      currency, 
-      'paid', 
-      flwData.data.tx_ref,
-      JSON.stringify(flwData.data)
-    ]);
-
-    // 5. Update tenant status
-    await pool.query(`
-      UPDATE tenants 
-      SET status = 'ACTIVE',
-          subscription_end_date = $1,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = $2
-    `, [newEndDate, tenantId]);
-
-    return NextResponse.json({ success: true, newEndDate });
-    
-  } catch (error: any) {
-    console.error('Flutterwave verification error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('[Flutterwave Verify Error]', error)
+    return NextResponse.json({ error: 'Payment verification failed' }, { status: 500 })
   }
 }

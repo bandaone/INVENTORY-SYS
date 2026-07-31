@@ -75,7 +75,7 @@ export async function sendDigitalReceiptEmail(to: string, receiptData: any) {
           <h2 style="text-align: center; margin-bottom: 5px;">${receiptData.businessName}</h2>
           <p style="text-align: center; margin-top: 0; color: #6b7280; font-size: 14px;">Receipt #${receiptData.receiptNum}</p>
           <hr style="border: 1px dashed #e5e7eb; margin: 20px 0;" />
-          
+
           <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
             <thead>
               <tr style="border-bottom: 1px solid #e5e7eb;">
@@ -95,13 +95,13 @@ export async function sendDigitalReceiptEmail(to: string, receiptData: any) {
               `).join('')}
             </tbody>
           </table>
-          
+
           <hr style="border: 1px dashed #e5e7eb; margin: 20px 0;" />
           <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 16px;">
             <span>Total Paid (${receiptData.method}):</span>
             <span>K${Number(receiptData.total).toFixed(2)}</span>
           </div>
-          
+
           <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #9ca3af;">
             <p>${receiptData.receiptFooter}</p>
             <p>Powered by Retail OS</p>
@@ -116,3 +116,53 @@ export async function sendDigitalReceiptEmail(to: string, receiptData: any) {
   }
 }
 
+export async function sendSubscriptionReceiptEmail(to: string, receiptData: any) {
+  try {
+    const data = await transporter.sendMail({
+      from: `"Retail OS" <${FROM_EMAIL}>`,
+      to,
+      subject: `Your Retail OS Receipt [${receiptData.referenceId.substring(0, 8).toUpperCase()}]`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 480px; margin: 0 auto; color: #1f2937; padding: 40px 20px;">
+          <h1 style="color: #2563eb; font-size: 24px; font-weight: 700; margin: 0 0 24px 0;">Retail OS</h1>
+          <p style="font-size: 16px; margin-bottom: 32px;">Here's your receipt for your recent subscription payment.</p>
+
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+            <tr style="border-bottom: 1px solid #e5e7eb;">
+              <td style="padding: 12px 0; color: #6b7280; font-size: 14px;">Date</td>
+              <td style="padding: 12px 0; text-align: right; font-weight: 500;">${new Date(receiptData.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #e5e7eb;">
+              <td style="padding: 12px 0; color: #6b7280; font-size: 14px;">Reference</td>
+              <td style="padding: 12px 0; text-align: right; font-weight: 500;">${receiptData.referenceId.substring(0, 8).toUpperCase()}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #e5e7eb;">
+              <td style="padding: 12px 0; color: #6b7280; font-size: 14px;">Billed To</td>
+              <td style="padding: 12px 0; text-align: right; font-weight: 500;">MTN Mobile Money<br/><span style="font-size: 12px; color: #6b7280;">${receiptData.payerMsisdn || ''}</span></td>
+            </tr>
+          </table>
+
+          <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; margin-bottom: 32px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+              <span style="font-weight: 500;">Retail OS Subscription</span>
+              <span style="font-weight: 500;">${receiptData.currency} ${Number(receiptData.amount).toFixed(2)}</span>
+            </div>
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;" />
+            <div style="display: flex; justify-content: space-between; font-size: 18px; font-weight: 700;">
+              <span>Total</span>
+              <span>${receiptData.currency} ${Number(receiptData.amount).toFixed(2)}</span>
+            </div>
+          </div>
+
+          <p style="font-size: 14px; color: #6b7280; text-align: center;">
+            You can always download a PDF copy of this receipt directly from your Billing Dashboard.
+          </p>
+        </div>
+      `
+    });
+    return { success: true, data };
+  } catch (error) {
+    console.error('Failed to send subscription receipt email:', error);
+    return { success: false, error };
+  }
+}

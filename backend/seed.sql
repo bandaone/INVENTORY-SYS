@@ -8,14 +8,8 @@ VALUES (
   '{"zraEnabled": true, "rfidEnabled": true}'::jsonb
 ) ON CONFLICT DO NOTHING;
 
--- Platform superadmin
-INSERT INTO platform_admins (id, name, email, pin_hash)
-VALUES (
-  '99999999-9999-9999-9999-999999999999',
-  'Super Admin',
-  'superadmin@company.com',
-  '1234'
-) ON CONFLICT (email) DO NOTHING;
+-- Platform administrators are never seeded. Provision one with the secure
+-- bootstrap procedure and a unique credential.
 
 -- Create Locations
 INSERT INTO locations (id, tenant_id, name, address, is_active)
@@ -35,15 +29,16 @@ VALUES (
 ) ON CONFLICT DO NOTHING;
 
 -- Create Staff
-INSERT INTO staff (id, tenant_id, name, role, email, pin_hash, location_id)
+INSERT INTO staff (id, tenant_id, name, role, email, pin_hash, location_id, is_active)
 VALUES (
   '44444444-4444-4444-4444-444444444444',
   '11111111-1111-1111-1111-111111111111',
   'John Owner',
   'owner',
   'owner@demo.com',
-  '1234', -- In production this is hashed
-  '22222222-2222-2222-2222-222222222222'
+  'DISABLED_DEMO_ACCOUNT',
+  '22222222-2222-2222-2222-222222222222',
+  false
 ),
 (
   '55555555-5555-5555-5555-555555555555',
@@ -51,8 +46,9 @@ VALUES (
   'Mary Cashier',
   'cashier',
   NULL,
-  '5678',
-  '22222222-2222-2222-2222-222222222222'
+  'DISABLED_DEMO_ACCOUNT',
+  '22222222-2222-2222-2222-222222222222',
+  false
 ) ON CONFLICT DO NOTHING;
 
 -- Create Variants

@@ -2,16 +2,14 @@ export const dynamic = "force-dynamic";
 import { adminPool } from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-
-function requireSuperadmin() {
-  const role = cookies().get('staff_role')?.value || '';
-  if (role !== 'superadmin') throw new Error('Unauthorized');
-}
+import { requirePlatformSession, SessionError } from '@/lib/session';
+import { hashPin, validPin } from '@/lib/pin';
+import { IdentityConflictError, withIdentityEmailLock } from '@/lib/identity-lock';
 
 export async function GET() {
   try {
-    requireSuperadmin();
-    const currentId = cookies().get('staff_id')?.value;
+    const session = await requirePlatformSession();
+    const currentId = session.staffId;
     const result = await adminPool.query(`
       SELECT id, name, email, is_active, created_at, updated_at
       FROM platform_admins
@@ -21,7 +19,7 @@ export async function GET() {
 
     return NextResponse.json({ profile: result.rows[0] || null });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Superadmin Profile GET]', err);
     return NextResponse.json({ error: 'Failed to load profile' }, { status: 500 });
   }
@@ -29,18 +27,19 @@ export async function GET() {
 
 export async function PUT(req: Request) {
   try {
-    requireSuperadmin();
-    const currentId = cookies().get('staff_id')?.value;
+    const session = await requirePlatformSession();
+    const currentId = session.staffId;
     const { name, email, pin } = await req.json();
 
     if (!currentId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     if (!email?.trim()) return NextResponse.json({ error: 'Email is required' }, { status: 400 });
-    if (pin !== undefined && pin !== '' && !/^\d{4}$/.test(pin)) {
+    if (pin !== undefined && pin !== '' && !validPin(pin)) {
       return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 });
     }
 
-    const params: any[] = [name.trim(), email.trim(), currentId];
+    const normalizedEmail = email.trim().toLocaleLowerCase();
+    const params: any[] = [name.trim(), normalizedEmail, currentId];
     let query = `
       UPDATE platform_admins
       SET name = $1,
@@ -50,24 +49,32 @@ export async function PUT(req: Request) {
     `;
 
     if (pin && pin.trim()) {
-      params.splice(2, 0, pin.trim());
+      params.splice(2, 0, await hashPin(pin.trim()));
       query = `
         UPDATE platform_admins
         SET name = $1,
             email = $2,
             pin_hash = $3,
+            failed_login_attempts = 0,
+            lockout_until = NULL,
+            auth_version = auth_version + 1,
             updated_at = NOW()
         WHERE id = $4
       `;
     }
 
-    await adminPool.query(query, params);
+    await withIdentityEmailLock(
+      normalizedEmail,
+      { excludeStaffId: currentId },
+      (client) => client.query(query, params)
+    );
 
     cookies().set('staff_name', name.trim(), { path: '/', httpOnly: false });
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
+    if (err instanceof IdentityConflictError) return NextResponse.json({ error: err.message }, { status: 409 });
     if (err.code === '23505') return NextResponse.json({ error: 'That email is already in use' }, { status: 409 });
     console.error('[Superadmin Profile PUT]', err);
     return NextResponse.json({ error: 'Failed to update profile' }, { status: 500 });

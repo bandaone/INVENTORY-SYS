@@ -1,24 +1,18 @@
 export const dynamic = "force-dynamic";
-import { fetchQuery } from '@/lib/db';
+import { fetchTenantQuery } from '@/lib/db';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-
-function getTenantId() {
-  const tenantId = cookies().get('tenant_id')?.value;
-  if (!tenantId) throw new Error('Unauthorized');
-  return tenantId;
-}
+import { requireTenantSession, SessionError } from '@/lib/session';
 
 export async function GET(req: Request) {
   try {
-    const tenantId = getTenantId();
+    const { tenantId } = await requireTenantSession(['owner', 'store_manager', 'stock_clerk']);
     const { searchParams } = new URL(req.url);
     const sourceSignature = searchParams.get('source_signature');
     if (!sourceSignature) {
       return NextResponse.json({ error: 'source_signature is required' }, { status: 400 });
     }
 
-    const rows = await fetchQuery(`
+    const rows = await fetchTenantQuery(tenantId, `
       SELECT id, source_signature, profile_name, mapping, sample_headers, created_at, updated_at
       FROM import_profiles
       WHERE tenant_id = $1 AND source_signature = $2
@@ -27,7 +21,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ profile: rows[0] || null });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Import Profiles GET]', err);
     return NextResponse.json({ error: 'Failed to load import profile' }, { status: 500 });
   }
@@ -35,7 +29,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const tenantId = getTenantId();
+    const { tenantId } = await requireTenantSession(['owner', 'store_manager', 'stock_clerk']);
     const body = await req.json();
     const sourceSignature = String(body?.source_signature || '').trim();
     const profileName = String(body?.profile_name || '').trim() || null;
@@ -46,7 +40,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'source_signature is required' }, { status: 400 });
     }
 
-    const rows = await fetchQuery(`
+    const rows = await fetchTenantQuery(tenantId, `
       INSERT INTO import_profiles (tenant_id, source_signature, profile_name, mapping, sample_headers)
       VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (tenant_id, source_signature)
@@ -60,7 +54,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, profile: rows[0] });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Import Profiles POST]', err);
     return NextResponse.json({ error: 'Failed to save import profile' }, { status: 500 });
   }

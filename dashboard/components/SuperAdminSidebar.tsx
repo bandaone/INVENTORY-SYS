@@ -42,11 +42,12 @@ export default function SuperAdminSidebar() {
           <span className="tenant-tier">System Management</span>
         </div>
         <button 
-          onClick={() => {
-            document.cookie = 'tenant_id=; Max-Age=0; path=/';
-            document.cookie = 'staff_role=; Max-Age=0; path=/';
-            document.cookie = 'staff_name=; Max-Age=0; path=/';
-            window.location.href = '/login';
+          onClick={async () => {
+            try {
+              await fetch('/api/auth/logout', { method: 'POST' });
+            } finally {
+              window.location.href = '/login';
+            }
           }}
           title="Log Out"
           style={{ 

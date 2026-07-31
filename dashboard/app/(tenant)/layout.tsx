@@ -1,16 +1,25 @@
 import Sidebar from '@/components/Sidebar';
 import { cookies } from 'next/headers';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { adminPool } from '@/lib/db';
+import { requireTenantSession } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function TenantLayout({ children }: { children: React.ReactNode }) {
   const cookieStore = cookies();
-  const tenantId  = cookieStore.get('tenant_id')?.value;
-  const staffRole = cookieStore.get('staff_role')?.value || '';
+  const pathname = headers().get('x-retail-pathname') || '';
+  const session = await requireTenantSession(undefined, { allowSuspended: true }).catch(() => null);
+  const tenantId = session?.tenantId;
+  const staffRole = session?.role || '';
 
-  if (!tenantId) redirect('/login');
+  if (!session || !tenantId || session.role === 'superadmin') redirect('/login');
+
+  const tenantRestricted = session.tenantStatus === 'SUSPENDED' || session.tenantStatus === 'CANCELLED';
+  if (tenantRestricted && (session.role !== 'owner' || pathname !== '/subscription')) {
+    redirect(session.role === 'owner' ? '/subscription' : '/login');
+  }
 
   // Role-based routing: cashiers/stock_clerks are sent to their dedicated workspaces
   if (staffRole === 'cashier')     redirect('/pos');

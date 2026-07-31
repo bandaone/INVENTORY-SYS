@@ -1,12 +1,11 @@
 export const dynamic = "force-dynamic";
 import { fetchTenantQuery } from '@/lib/db';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { requireTenantSession, SessionError } from '@/lib/session';
 
 export async function GET() {
   try {
-    const tenantId = cookies().get('tenant_id')?.value;
-    if (!tenantId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { tenantId } = await requireTenantSession(['owner', 'store_manager', 'cashier', 'stock_clerk']);
 
     const rows = await fetchTenantQuery(tenantId, `
       SELECT id, name, category, subtype, color, size, cost_price, retail_price, discount_percent, reorder_threshold,
@@ -16,6 +15,7 @@ export async function GET() {
     `);
     return NextResponse.json(rows);
   } catch (err) {
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Catalog GET]', err);
     return NextResponse.json({ error: 'Failed to load catalog' }, { status: 500 });
   }
@@ -23,8 +23,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const tenantId = cookies().get('tenant_id')?.value;
-    if (!tenantId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { tenantId } = await requireTenantSession(['owner', 'store_manager', 'stock_clerk']);
 
     const {
       name,
@@ -96,6 +95,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, variant });
   } catch (err: any) {
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     if (err.code === '23505') { // Postgres Unique violation code
       return NextResponse.json({ error: 'This exact product (name + color + size) already exists.' }, { status: 409 });
     }

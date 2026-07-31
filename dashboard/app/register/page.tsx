@@ -6,11 +6,13 @@ import { useRouter } from 'next/navigation';
 export default function PublicRegistration() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
     
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData);
@@ -22,13 +24,14 @@ export default function PublicRegistration() {
         body: JSON.stringify(data)
       });
       
+      const response = await res.json();
       if (res.ok) {
         setStep(2);
       } else {
-        alert('Registration failed. Please try again.');
+        setError(response.error || 'Registration failed. Please try again.');
       }
     } catch {
-      alert('Network error');
+      setError('Network error. Please try again.');
     }
     setLoading(false);
   };
@@ -106,6 +109,11 @@ export default function PublicRegistration() {
           </p>
           
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {error && (
+              <div role="alert" style={{ padding: '12px 14px', borderRadius: '8px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: '14px' }}>
+                {error}
+              </div>
+            )}
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
               <div>
@@ -132,6 +140,17 @@ export default function PublicRegistration() {
             <div>
               <label style={labelStyle}>Store Address</label>
               <input required name="address" type="text" placeholder="Plot 42, Cairo Road, Lusaka" style={inputStyle} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+              <div>
+                <label style={labelStyle}>4-Digit PIN</label>
+                <input required name="pin" type="password" inputMode="numeric" pattern="[0-9]{4}" minLength={4} maxLength={4} autoComplete="new-password" placeholder="••••" style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Confirm PIN</label>
+                <input required name="confirm_pin" type="password" inputMode="numeric" pattern="[0-9]{4}" minLength={4} maxLength={4} autoComplete="new-password" placeholder="••••" style={inputStyle} />
+              </div>
             </div>
 
             <div>

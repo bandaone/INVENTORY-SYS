@@ -1,17 +1,19 @@
 export const dynamic = "force-dynamic";
 import { fetchTenantQuery, adminPool } from '@/lib/db';
+import { requireTenantSession, SessionError } from '@/lib/session';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-
-function getTenantId() {
-  const t = cookies().get('tenant_id')?.value;
-  if (!t) throw new Error('Unauthorized');
-  return t;
-}
+import type { PoolClient } from 'pg';
 
 export async function GET() {
   try {
-    const tenantId = getTenantId();
+    const session = await requireTenantSession(
+      ['owner', 'store_manager', 'cashier', 'stock_clerk'],
+      { allowSuspended: true }
+    );
+    if (['SUSPENDED', 'CANCELLED'].includes(session.tenantStatus) && session.role !== 'owner') {
+      throw new SessionError('This store account is suspended', 403);
+    }
+    const tenantId = session.tenantId;
 
     const rows = await fetchTenantQuery(tenantId, `
       SELECT id, name, address, is_active
@@ -21,50 +23,63 @@ export async function GET() {
     `);
     return NextResponse.json(rows);
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Locations GET]', err);
     return NextResponse.json({ error: 'Failed to load locations' }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
+  let client: PoolClient | null = null;
   try {
-    const tenantId = getTenantId();
+    const { tenantId } = await requireTenantSession(['owner']);
     const { name, address } = await req.json();
 
     if (!name) {
       return NextResponse.json({ error: 'Location name is required' }, { status: 400 });
     }
 
-    // Check limits
-    const tenantRes = await adminPool.query('SELECT max_locations FROM tenants WHERE id = $1', [tenantId]);
-    if (tenantRes.rows.length === 0) throw new Error('Tenant not found');
-    const { max_locations } = tenantRes.rows[0];
-
-    const currentLocationsRes = await fetchTenantQuery(tenantId, 'SELECT COUNT(*) as count FROM locations WHERE is_active = true');
-    const currentCount = Number(currentLocationsRes[0].count);
-
-    if (currentCount >= max_locations) {
-      return NextResponse.json({ error: `Subscription limit reached. Your plan allows a maximum of ${max_locations} active location(s). Please upgrade to add more.` }, { status: 403 });
+    client = await adminPool.connect();
+    await client.query('BEGIN');
+    const tenantRes = await client.query(
+      'SELECT max_locations FROM tenants WHERE id = $1 FOR UPDATE',
+      [tenantId]
+    );
+    if (tenantRes.rowCount !== 1) throw new Error('Tenant not found');
+    const maxLocations = Number(tenantRes.rows[0].max_locations);
+    const currentLocationsRes = await client.query(
+      'SELECT COUNT(*)::integer AS count FROM locations WHERE tenant_id = $1 AND is_active = true',
+      [tenantId]
+    );
+    const currentCount = Number(currentLocationsRes.rows[0]?.count || 0);
+    if (currentCount >= maxLocations) {
+      await client.query('ROLLBACK');
+      client.release();
+      client = null;
+      return NextResponse.json({ error: `Subscription limit reached. Your plan allows a maximum of ${maxLocations} active location(s). Please upgrade to add more.` }, { status: 403 });
     }
 
-    // Insert new location
-    const newLoc = await fetchTenantQuery(tenantId, `
+    const newLoc = await client.query(`
       INSERT INTO locations (tenant_id, name, address, is_active)
       VALUES ($1, $2, $3, true)
       RETURNING id, name, address, is_active
-    `, [tenantId, name, address]);
+    `, [tenantId, String(name).trim(), address]);
+    await client.query(
+      'UPDATE tenants SET active_locations_count = $1, updated_at = NOW() WHERE id = $2',
+      [currentCount + 1, tenantId]
+    );
+    await client.query('COMMIT');
 
-    // Update count in tenants table
-    await adminPool.query('UPDATE tenants SET active_locations_count = active_locations_count + 1 WHERE id = $1', [tenantId]);
-
-    return NextResponse.json({ success: true, location: newLoc[0] });
+    return NextResponse.json({ success: true, location: newLoc.rows[0] });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (client) await client.query('ROLLBACK').catch(() => undefined);
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     if (err.code === '23505') {
       return NextResponse.json({ error: 'A location with this name already exists' }, { status: 400 });
     }
     console.error('[Locations POST]', err);
     return NextResponse.json({ error: 'Failed to create location' }, { status: 500 });
+  } finally {
+    client?.release();
   }
 }

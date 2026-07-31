@@ -84,8 +84,18 @@ export default function POSPage() {
       tenantName:   getCookie('tenant_name'),
       locationName: getCookie('location_name'),
     });
-    setSelectedLocationId(getCookie('location_id'));
     setMounted(true);
+
+    fetch('/api/auth/session')
+      .then((response) => {
+        if (!response.ok) throw new Error('Session expired');
+        return response.json();
+      })
+      .then((data) => {
+        setSession((current) => ({ ...current, staffRole: data.role || current.staffRole }));
+        setSelectedLocationId(data.locationId || '');
+      })
+      .catch(() => router.replace('/login'));
 
     if (scanRef.current) scanRef.current.focus();
 
@@ -99,7 +109,7 @@ export default function POSPage() {
     return () => {
       clearInterval(t);
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     // Only fetch the full location list for roles that need the dropdown (owner, manager)

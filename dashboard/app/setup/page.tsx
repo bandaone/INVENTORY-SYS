@@ -250,7 +250,7 @@ export default function SetupWizard() {
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px' }}>
                   <InputField label="Staff Full Name" value={team.name} onChange={(e) => setTeam({ ...team, name: e.target.value })} placeholder="Bwalya Mutale" />
-                  <InputField label="Email (Optional)" type="email" value={team.email} onChange={(e) => setTeam({ ...team, email: e.target.value })} placeholder="bwalya@yourstore.co.zm" />
+                  <InputField label="Staff Email (Required)" type="email" value={team.email} onChange={(e) => setTeam({ ...team, email: e.target.value })} placeholder="bwalya@yourstore.co.zm" />
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Role</label>

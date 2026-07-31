@@ -18,9 +18,10 @@ const ThemeContext = createContext<ThemeContextType>({
 // User A's theme preference never overwrites User B's.
 function getThemeKey(): string {
   if (typeof document === 'undefined') return 'retail-os-theme-default';
-  // Read the tenant+staff identity baked into cookies by the login route
+  // Display labels are sufficient to keep this cosmetic preference separate;
+  // authoritative tenant and staff IDs remain HttpOnly.
   const staffCookie = document.cookie.split('; ').find(r => r.startsWith('staff_name='));
-  const tenantCookie = document.cookie.split('; ').find(r => r.startsWith('tenant_id='));
+  const tenantCookie = document.cookie.split('; ').find(r => r.startsWith('tenant_name='));
   const staff = staffCookie ? staffCookie.split('=')[1] : 'default';
   const tenant = tenantCookie ? tenantCookie.split('=')[1] : 'default';
   return `retail-os-theme-${tenant}-${staff}`;

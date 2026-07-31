@@ -1,76 +1,127 @@
-export const dynamic = "force-dynamic";
-import { adminPool } from '@/lib/db';
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+export const dynamic = 'force-dynamic'
 
-// POST: authenticate a cashier by email + PIN (or PIN only for POS tablets)
+import { adminPool } from '@/lib/db'
+import { hashPin, needsPinUpgrade, validPin, verifyPin } from '@/lib/pin'
+import { clearSessionCookies, getVerifiedSession, issueSession } from '@/lib/session'
+import { assertSessionConfiguration, type SessionRole } from '@/lib/session-token'
+import { clearStaffLoginFailures, recordStaffLoginFailure } from '@/lib/login-lockout'
+import { NextResponse } from 'next/server'
+
+type PosLoginRow = {
+  id: string
+  name: string
+  role: SessionRole
+  pin_hash: string
+  tenant_id: string
+  tenant_name: string
+  tenant_status: string
+  default_location_id: string | null
+  default_location_name: string | null
+  is_locked: boolean
+  auth_version: number
+}
+
 export async function POST(req: Request) {
   try {
-    const { email, pin } = await req.json();
+    assertSessionConfiguration()
+    const body = await req.json()
+    const email = typeof body.email === 'string' ? body.email.trim().toLocaleLowerCase() : ''
+    const pin = body.pin
 
-    if (!pin || pin.length !== 4) {
-      return NextResponse.json({ error: 'PIN must be 4 digits' }, { status: 400 });
+    if (!email || !validPin(pin)) {
+      return NextResponse.json({ error: 'Email and a 4-digit PIN are required' }, { status: 400 })
     }
 
-    // Build query — email is optional (POS tablets may use PIN-only from a pre-paired tenant)
-    const tenantIdFromCookie = cookies().get('tenant_id')?.value;
+    const result = await adminPool.query<PosLoginRow>(`
+      SELECT
+        s.id,
+        s.name,
+        s.role,
+        s.pin_hash,
+        s.tenant_id,
+        s.auth_version,
+        t.name AS tenant_name,
+        t.status AS tenant_status,
+        l.id AS default_location_id,
+        l.name AS default_location_name
+        , (s.lockout_until IS NOT NULL AND s.lockout_until > NOW()) AS is_locked
+      FROM staff s
+      JOIN tenants t ON t.id = s.tenant_id
+      LEFT JOIN locations l ON l.id = s.location_id AND l.tenant_id = s.tenant_id
+      WHERE LOWER(BTRIM(s.email)) = $1
+        AND s.is_active = true
+        AND s.role IN ('cashier', 'stock_clerk', 'store_manager', 'owner')
+      ORDER BY s.created_at ASC
+    `, [email])
 
-    let query: string;
-    let params: any[];
-
-    if (email) {
-      // Full login: email + PIN — works across tenants (for manager/owner logging in fresh)
-      query = `
-        SELECT s.id, s.name, s.role, s.tenant_id, t.name as tenant_name,
-               l.id as default_location_id, l.name as default_location_name
-        FROM staff s
-        JOIN tenants t ON s.tenant_id = t.id
-        LEFT JOIN locations l ON s.location_id = l.id
-        WHERE s.email = $1 AND s.pin_hash = $2 AND s.is_active = true
-        LIMIT 1
-      `;
-      params = [email, pin];
-    } else if (tenantIdFromCookie) {
-      // PIN-only login: device already knows the tenant (pre-paired tablet)
-      query = `
-        SELECT s.id, s.name, s.role, s.tenant_id, t.name as tenant_name,
-               l.id as default_location_id, l.name as default_location_name
-        FROM staff s
-        JOIN tenants t ON s.tenant_id = t.id
-        LEFT JOIN locations l ON s.location_id = l.id
-        WHERE s.tenant_id = $1 AND s.pin_hash = $2 AND s.is_active = true
-        AND s.role IN ('cashier', 'store_manager', 'owner')
-        LIMIT 1
-      `;
-      params = [tenantIdFromCookie, pin];
-    } else {
-      return NextResponse.json({ error: 'Email is required for first login' }, { status: 400 });
+    const platformIdentity = await adminPool.query(
+      `SELECT 1 FROM platform_admins WHERE LOWER(BTRIM(email)) = $1 AND is_active = true LIMIT 1`,
+      [email]
+    )
+    if ((platformIdentity.rowCount ?? 0) > 0 || result.rows.length > 1) {
+      return NextResponse.json({
+        error: 'This email is linked to more than one account. Contact support to separate the accounts.',
+        code: 'AMBIGUOUS_TENANT_ACCOUNT',
+      }, { status: 409 })
     }
 
-    const result = await adminPool.query(query, params);
-
-    if (result.rows.length === 0) {
-      return NextResponse.json({ error: 'Invalid credentials or account inactive' }, { status: 401 });
+    const matches: PosLoginRow[] = []
+    for (const candidate of result.rows) {
+      if (!candidate.is_locked && await verifyPin(pin, candidate.pin_hash)) matches.push(candidate)
     }
 
-    const user = result.rows[0];
-
-    // Set session cookies
-    const opts = { path: '/', maxAge: 60 * 60 * 12 }; // 12-hour shift
-    cookies().set('tenant_id', user.tenant_id, { ...opts, httpOnly: true });
-    cookies().set('staff_id', user.id, { ...opts, httpOnly: true });
-    cookies().set('staff_name', user.name, opts);
-    cookies().set('staff_role', user.role, opts);
-    cookies().set('tenant_name', user.tenant_name, opts);
-    if (user.default_location_id) {
-      cookies().set('location_id', user.default_location_id, opts);
-      cookies().set('location_name', user.default_location_name, opts);
+    if (matches.length === 0) {
+      await recordStaffLoginFailure(email)
+      return NextResponse.json({ error: 'Invalid credentials or account inactive' }, { status: 401 })
     }
+    if (matches.length > 1) {
+      return NextResponse.json({
+        error: 'This email and PIN identify more than one store. Contact support to separate the accounts.',
+        code: 'AMBIGUOUS_TENANT_ACCOUNT',
+      }, { status: 409 })
+    }
+
+    const user = matches[0]
+    if (user.tenant_status === 'SUSPENDED' || user.tenant_status === 'CANCELLED') {
+      return NextResponse.json({ error: 'This store account is suspended. Contact support.' }, { status: 403 })
+    }
+    if (user.role !== 'owner' && !user.default_location_id) {
+      return NextResponse.json({ error: 'Your account has no store location assigned.' }, { status: 403 })
+    }
+
+    const shift = await adminPool.query(`
+      INSERT INTO shifts (tenant_id, staff_id, location_id)
+      VALUES ($1, $2, $3)
+      RETURNING id
+    `, [user.tenant_id, user.id, user.default_location_id])
+
+    if (needsPinUpgrade(user.pin_hash)) {
+      await adminPool.query('UPDATE staff SET pin_hash = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3', [
+        await hashPin(pin),
+        user.id,
+        user.tenant_id,
+      ])
+    }
+
+    await clearStaffLoginFailures(user.id, user.tenant_id)
 
     await adminPool.query(`
       INSERT INTO platform_access_events (tenant_id, staff_id, event_type, source, metadata)
       VALUES ($1, $2, 'LOGIN', 'POS', $3)
-    `, [user.tenant_id, user.id, JSON.stringify({ role: user.role, email: email || null, location_id: user.default_location_id || null })]);
+    `, [user.tenant_id, user.id, JSON.stringify({ role: user.role, location_id: user.default_location_id })])
+
+    await issueSession({
+      staffId: user.id,
+      role: user.role,
+      tenantId: user.tenant_id,
+      locationId: user.default_location_id,
+      shiftId: shift.rows[0].id,
+      authVersion: Number(user.auth_version || 0),
+    }, {
+      staffName: user.name,
+      tenantName: user.tenant_name,
+      locationName: user.default_location_name,
+    })
 
     return NextResponse.json({
       success: true,
@@ -80,34 +131,39 @@ export async function POST(req: Request) {
         role: user.role,
         tenant_name: user.tenant_name,
         location_name: user.default_location_name,
-      }
-    });
-  } catch (err) {
-    console.error('[POS Login Error]', err);
-    return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
+      },
+    })
+  } catch (error) {
+    console.error('[POS Login Error]', error)
+    return NextResponse.json({ error: 'Authentication failed' }, { status: 500 })
   }
 }
 
-// DELETE: end shift / log out
 export async function DELETE() {
+  const session = await getVerifiedSession()
+  clearSessionCookies()
+
+  if (!session?.tenantId) return NextResponse.json({ success: true })
+
   try {
-    const tenantId = cookies().get('tenant_id')?.value;
-    const staffId = cookies().get('staff_id')?.value;
-    const cookieOpts = { path: '/', maxAge: 0 };
-    cookies().set('staff_id', '', cookieOpts);
-    cookies().set('staff_name', '', cookieOpts);
-    cookies().set('staff_role', '', cookieOpts);
-    cookies().set('location_id', '', cookieOpts);
-    cookies().set('location_name', '', cookieOpts);
-    if (tenantId && staffId) {
+    if (session.shiftId) {
       await adminPool.query(`
-        INSERT INTO platform_access_events (tenant_id, staff_id, event_type, source, metadata)
-        VALUES ($1, $2, 'LOGOUT', 'POS', $3)
-      `, [tenantId, staffId, JSON.stringify({ source: 'pos_logout' })]);
+        UPDATE shifts
+        SET ended_at = COALESCE(ended_at, NOW())
+        WHERE id = $1 AND tenant_id = $2 AND staff_id = $3 AND ended_at IS NULL
+      `, [session.shiftId, session.tenantId, session.staffId])
     }
-    // NOTE: we keep tenant_id cookie so the tablet remembers which store it belongs to
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    return NextResponse.json({ error: 'Logout failed' }, { status: 500 });
+    await adminPool.query(`
+      UPDATE staff SET auth_version = auth_version + 1, updated_at = NOW()
+      WHERE id = $1 AND tenant_id = $2 AND auth_version = $3
+    `, [session.staffId, session.tenantId, session.authVersion])
+    await adminPool.query(`
+      INSERT INTO platform_access_events (tenant_id, staff_id, event_type, source, metadata)
+      VALUES ($1, $2, 'LOGOUT', 'POS', $3)
+    `, [session.tenantId, session.staffId, JSON.stringify({ shift_id: session.shiftId })])
+  } catch (error) {
+    console.error('[POS Logout Error]', error)
   }
+
+  return NextResponse.json({ success: true })
 }

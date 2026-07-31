@@ -1,16 +1,11 @@
 export const dynamic = "force-dynamic";
 import { adminPool } from '@/lib/db';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-
-function checkSuperAdmin() {
-  const role = cookies().get('staff_role')?.value;
-  if (role !== 'superadmin') throw new Error('Unauthorized');
-}
+import { requirePlatformSession, SessionError } from '@/lib/session';
 
 export async function GET() {
   try {
-    checkSuperAdmin();
+    await requirePlatformSession();
 
     // 1. Current MRR (Active locations * 350 ZMW)
     const mrrResult = await adminPool.query(`
@@ -47,7 +42,7 @@ export async function GET() {
       events: eventsResult.rows
     });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Revenue API GET]', err);
     return NextResponse.json({ error: 'Failed to load revenue data' }, { status: 500 });
   }
@@ -55,7 +50,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    checkSuperAdmin();
+    await requirePlatformSession();
     const { action, eventId, tenantId, amount, tier } = await req.json();
 
     if (action === 'MARK_PAID') {
@@ -78,7 +73,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Revenue API POST]', err);
     return NextResponse.json({ error: 'Failed to process revenue action' }, { status: 500 });
   }

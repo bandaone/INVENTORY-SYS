@@ -20,10 +20,11 @@ export default function SubscriptionPage() {
       const json = await res.json();
       const locRes = await fetch('/api/locations');
       const locJson = await locRes.json();
+      const locations = Array.isArray(locJson) ? locJson : (locJson.locations || []);
       setData({
         tenant: json.tenant,
         history: json.billing_history || [],
-        locations: locJson.locations?.filter((l: any) => l.is_active)?.length || 1,
+        locations: locations.filter((l: any) => l.is_active).length || 1,
       });
     } catch (err) {
       console.error(err);
@@ -195,7 +196,7 @@ export default function SubscriptionPage() {
             ))}
           </div>
 
-          {isTrial && (
+          {!isActive && (
             <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px dashed var(--panel-border)' }}>
               <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Lock size={16} color="var(--primary)" />

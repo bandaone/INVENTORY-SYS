@@ -1,6 +1,6 @@
 # Retail OS - Development Makefile
 
-.PHONY: help setup start stop restart logs clean test migrate seed
+.PHONY: help setup start stop restart logs clean test migrate seed tenant-isolation-audit tenant-isolation-apply
 
 # Default target
 help:
@@ -14,6 +14,8 @@ help:
 	@echo "logs-f     - Follow logs in real-time"
 	@echo "clean      - Remove containers, volumes, and images"
 	@echo "migrate    - Run database migrations"
+	@echo "tenant-isolation-audit - Read-only report of mixed/cross-tenant data"
+	@echo "tenant-isolation-apply - Apply tenant containment after reviewing audit"
 	@echo "seed       - Seed database with test data"
 	@echo "test       - Run all tests"
 	@echo "shell      - Open shell in backend container"
@@ -88,6 +90,14 @@ migrate:
 	@echo "🗄️  Running database migrations..."
 	docker-compose exec backend npm run db:migrate
 	@echo "✅ Migrations complete!"
+
+tenant-isolation-audit:
+	@echo "Running read-only tenant isolation audit..."
+	docker compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U retail_os -d retail_os_dev < dashboard/scripts/tenant-isolation-audit.sql
+
+tenant-isolation-apply:
+	@echo "Applying tenant isolation containment migration..."
+	docker compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U retail_os -d retail_os_dev < dashboard/migrations/008_tenant_isolation_containment.sql
 
 # Seed database
 seed:

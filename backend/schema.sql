@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     CHECK (active_devices_count >= 0),
   max_locations INTEGER NOT NULL,
   features JSONB DEFAULT '{}'::jsonb,
+  subscription_end_date TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -50,6 +51,7 @@ CREATE TABLE IF NOT EXISTS staff (
   is_active BOOLEAN DEFAULT TRUE,
   failed_login_attempts INTEGER DEFAULT 0,
   lockout_until TIMESTAMP,
+  auth_version INTEGER NOT NULL DEFAULT 0 CHECK (auth_version >= 0),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
   CONSTRAINT email_or_pin CHECK (email IS NOT NULL OR pin_hash IS NOT NULL),
@@ -67,15 +69,16 @@ CREATE TABLE IF NOT EXISTS platform_admins (
   email VARCHAR(255) NOT NULL UNIQUE,
   pin_hash VARCHAR(255) NOT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+  lockout_until TIMESTAMPTZ,
+  auth_version INTEGER NOT NULL DEFAULT 0 CHECK (auth_version >= 0),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_platform_admins_email ON platform_admins(email);
 
--- Insert initial Platform Admin
-INSERT INTO platform_admins (name, email, pin_hash)
-VALUES ('Super Admin', '01dennisbanda@gmail.com', '1234')
-ON CONFLICT (email) DO NOTHING;
+-- Platform administrators must be provisioned through a one-time secure
+-- bootstrap process. Never seed a repository-known email or PIN here.
 
 CREATE TABLE IF NOT EXISTS variants (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

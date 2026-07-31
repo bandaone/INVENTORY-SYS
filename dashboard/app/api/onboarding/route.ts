@@ -1,7 +1,9 @@
 export const dynamic = "force-dynamic";
 import { adminPool, fetchTenantQuery } from '@/lib/db';
+import { requireTenantSession, SessionError } from '@/lib/session';
+import { hashPin, validPin } from '@/lib/pin';
+import { IdentityConflictError, withIdentityEmailLock } from '@/lib/identity-lock';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 
 const STEP_FIELDS: Record<string, { field: string; step: number; event: string }> = {
   business: { field: 'business_profile_completed', step: 2, event: 'BUSINESS_PROFILE_COMPLETED' },
@@ -13,13 +15,9 @@ const STEP_FIELDS: Record<string, { field: string; step: number; event: string }
   launch: { field: 'go_live_approved', step: 8, event: 'GO_LIVE_APPROVED' },
 };
 
-function getTenantContext() {
-  const cookieStore = cookies();
-  const tenantId = cookieStore.get('tenant_id')?.value;
-  const staffId = cookieStore.get('staff_id')?.value;
-  const staffRole = cookieStore.get('staff_role')?.value || '';
-  if (!tenantId || staffRole !== 'owner') throw new Error('Unauthorized');
-  return { tenantId, staffId };
+async function getTenantContext() {
+  const session = await requireTenantSession(['owner']);
+  return { tenantId: session.tenantId, staffId: session.staffId };
 }
 
 async function markStep(tenantId: string, stepKey: string) {
@@ -47,7 +45,7 @@ async function markStep(tenantId: string, stepKey: string) {
 
 export async function GET() {
   try {
-    const { tenantId } = getTenantContext();
+    const { tenantId } = await getTenantContext();
     const [sessionRows, tenantRows, settingsRows, locationRows, staffRows, productRows, stockRows] = await Promise.all([
       fetchTenantQuery(tenantId, `SELECT * FROM onboarding_sessions WHERE tenant_id = $1 LIMIT 1`, [tenantId]),
       adminPool.query(`SELECT id, name, subscription_tier, status, zra_configured, created_at FROM tenants WHERE id = $1`, [tenantId]),
@@ -70,7 +68,7 @@ export async function GET() {
       },
     });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[Onboarding GET]', err);
     return NextResponse.json({ error: 'Failed to load onboarding' }, { status: 500 });
   }
@@ -78,7 +76,7 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   try {
-    const { tenantId } = getTenantContext();
+    const { tenantId } = await getTenantContext();
     const body = await req.json();
     const step = String(body.step || '');
     const payload = body.payload || {};
@@ -126,26 +124,24 @@ export async function PATCH(req: Request) {
     }
 
     if (step === 'team' && payload.name && payload.pin) {
-      if (!/^\d{4}$/.test(String(payload.pin))) return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 });
+      if (!validPin(String(payload.pin))) return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 });
       const locationRows = await fetchTenantQuery(tenantId, `SELECT id FROM locations WHERE tenant_id = $1 ORDER BY created_at ASC LIMIT 1`, [tenantId]);
-      await fetchTenantQuery(tenantId, `
-        INSERT INTO staff (tenant_id, name, email, role, pin_hash, location_id, is_active)
-        VALUES ($1, $2, $3, $4, $5, $6, true)
-        ON CONFLICT (tenant_id, email) DO UPDATE SET
-          name = EXCLUDED.name,
-          role = EXCLUDED.role,
-          pin_hash = EXCLUDED.pin_hash,
-          location_id = EXCLUDED.location_id,
-          is_active = true,
-          updated_at = NOW()
-      `, [
-        tenantId,
-        String(payload.name).trim(),
-        payload.email ? String(payload.email).trim() : null,
-        ['cashier', 'stock_clerk', 'store_manager'].includes(payload.role) ? payload.role : 'cashier',
-        String(payload.pin),
-        locationRows[0]?.id || null,
-      ]);
+      const email = payload.email ? String(payload.email).trim().toLocaleLowerCase() : null;
+      if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return NextResponse.json({ error: 'A valid staff email is required for login' }, { status: 400 });
+      }
+      const pinHash = await hashPin(String(payload.pin));
+      await withIdentityEmailLock(email, {}, () => fetchTenantQuery(tenantId, `
+          INSERT INTO staff (tenant_id, name, email, role, pin_hash, location_id, is_active)
+          VALUES ($1, $2, $3, $4, $5, $6, true)
+        `, [
+          tenantId,
+          String(payload.name).trim(),
+          email,
+          ['cashier', 'stock_clerk', 'store_manager'].includes(payload.role) ? payload.role : 'cashier',
+          pinHash,
+          locationRows[0]?.id || null,
+        ]));
     }
 
     if (step === 'catalog' && payload.product_name) {
@@ -208,7 +204,8 @@ export async function PATCH(req: Request) {
     await markStep(tenantId, step);
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    if (err.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (err instanceof SessionError) return NextResponse.json({ error: err.message }, { status: err.status });
+    if (err instanceof IdentityConflictError) return NextResponse.json({ error: err.message }, { status: 409 });
     if (err.code === '23505') return NextResponse.json({ error: 'A record with those details already exists' }, { status: 409 });
     console.error('[Onboarding PATCH]', err);
     return NextResponse.json({ error: 'Failed to save onboarding step' }, { status: 500 });
