@@ -1,2 +1,4 @@
 .vercel
+supabase/.temp/
 .env*
+!.env.example

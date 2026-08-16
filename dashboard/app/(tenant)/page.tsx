@@ -14,70 +14,73 @@ export default async function DashboardPage() {
     redirect('/login');
   }
   const safeTenantId = session.tenantId;
-  
-  // 1. Recent Transactions (Enforced by RLS)
-  const recentTransactions = await fetchTenantQuery(safeTenantId, `
-    SELECT t.receipt_number as receipt, l.name as location, t.total as amount, t.payment_method as method
-    FROM transactions t
-    JOIN locations l ON t.location_id = l.id
-    ORDER BY t.created_at DESC
-    LIMIT 5
-  `);
+  const tenantRows = await fetchTenantQuery(safeTenantId, `
+    SELECT business_timezone FROM tenants WHERE id = $1
+  `, [safeTenantId]);
+  const businessTimezone = tenantRows[0]?.business_timezone || 'Africa/Lusaka';
 
-  const recentShiftReports = await fetchTenantQuery(safeTenantId, `
-    SELECT
-      sr.id,
-      sr.report_date,
-      sr.transactions_count,
-      sr.gross_sales,
-      sr.discount_total,
-      sr.returns_total,
-      sr.net_sales,
-      st.name as cashier_name,
-      l.name as location_name
-    FROM shift_closing_reports sr
-    JOIN staff st ON sr.cashier_id = st.id
-    LEFT JOIN locations l ON sr.location_id = l.id
-    ORDER BY sr.closed_at DESC
-    LIMIT 5
-  `).catch(() => []);
+  const [recentTransactions, recentShiftReports, dailyResult, stockResult, shrinkageResult, distributionResult] = await Promise.all([
+    fetchTenantQuery(safeTenantId, `
+      SELECT t.receipt_number as receipt, l.name as location, t.total as amount, t.payment_method as method
+      FROM transactions t
+      JOIN locations l ON t.location_id = l.id AND l.tenant_id = t.tenant_id
+      ORDER BY t.created_at DESC
+      LIMIT 5
+    `),
+    fetchTenantQuery(safeTenantId, `
+      SELECT
+        sr.id, sr.report_date, sr.transactions_count, sr.gross_sales,
+        sr.discount_total, sr.returns_total, sr.net_sales,
+        st.name as cashier_name, l.name as location_name
+      FROM shift_closing_reports sr
+      JOIN staff st ON sr.cashier_id = st.id AND st.tenant_id = sr.tenant_id
+      LEFT JOIN locations l ON sr.location_id = l.id AND l.tenant_id = sr.tenant_id
+      ORDER BY sr.closed_at DESC
+      LIMIT 5
+    `).catch(() => []),
+    fetchTenantQuery(safeTenantId, `
+      WITH bounds AS (
+        SELECT date_trunc('day', NOW() AT TIME ZONE $1) AT TIME ZONE $1 AS day_start
+      )
+      SELECT
+        COALESCE((SELECT SUM(total) FROM transactions, bounds WHERE created_at >= bounds.day_start), 0)
+          - COALESCE((SELECT SUM(refund_total) FROM sales_returns, bounds WHERE created_at >= bounds.day_start), 0)
+          AS net_revenue,
+        GREATEST(
+          COALESCE((SELECT SUM(item.quantity) FROM transaction_items AS item JOIN transactions AS sale ON sale.id = item.transaction_id, bounds WHERE sale.created_at >= bounds.day_start), 0)
+          - COALESCE((SELECT SUM(item.quantity) FROM sales_return_items AS item JOIN sales_returns AS returned ON returned.id = item.return_id, bounds WHERE returned.created_at >= bounds.day_start), 0),
+          0
+        )::integer AS net_items_sold
+      FROM bounds
+    `, [businessTimezone]),
+    fetchTenantQuery(safeTenantId, `
+      SELECT COUNT(*) as count, COALESCE(SUM(retail_price), 0) as total_value
+      FROM garments
+      WHERE status = 'in_stock'
+    `),
+    fetchTenantQuery(safeTenantId, `
+      WITH bounds AS (
+        SELECT date_trunc('month', NOW() AT TIME ZONE $1) AT TIME ZONE $1 AS month_start
+      )
+      SELECT COALESCE(SUM(shrinkage_value), 0) AS shrinkage_value
+      FROM stocktake_sessions, bounds
+      WHERE status = 'completed' AND completed_at >= bounds.month_start
+    `, [businessTimezone]),
+    fetchTenantQuery(safeTenantId, `
+      SELECT v.name, COUNT(g.serial) as count
+      FROM variants v
+      LEFT JOIN garments g ON v.id = g.variant_id AND g.status = 'in_stock'
+      GROUP BY v.id, v.name
+      ORDER BY count DESC, v.name
+    `),
+  ]);
 
-  // 2. Total Revenue (Today)
-  const revenueResult = await fetchTenantQuery(safeTenantId, `
-    SELECT COALESCE(SUM(total), 0) as total
-    FROM transactions
-    WHERE created_at >= CURRENT_DATE
-  `);
-  const todayRevenue = revenueResult[0]?.total || 0;
-
-  // 3. Active Stock Value
-  const stockResult = await fetchTenantQuery(safeTenantId, `
-    SELECT COUNT(*) as count, COALESCE(SUM(retail_price), 0) as total_value
-    FROM garments
-    WHERE status = 'in_stock'
-  `);
-  const stockCount = stockResult[0]?.count || 0;
-  const stockValue = stockResult[0]?.total_value || 0;
-
-  // 4. Items Sold Today
-  const itemsSoldResult = await fetchTenantQuery(safeTenantId, `
-    SELECT COUNT(*) as count
-    FROM garments
-    WHERE status = 'sold'
-  `);
-  const itemsSold = itemsSoldResult[0]?.count || 0;
-
-  // Since we don't have real "shrinkage" logic yet, we'll keep it 0
-  const monthlyShrinkage = 0.00;
-
-  // 5. Stock Distribution (By Variant)
-  const distributionResult = await fetchTenantQuery(safeTenantId, `
-    SELECT v.name, COUNT(g.serial) as count
-    FROM variants v
-    LEFT JOIN garments g ON v.id = g.variant_id AND g.status = 'in_stock'
-    GROUP BY v.name
-  `);
-  const totalStock = parseInt(stockCount);
+  const todayRevenue = Number(dailyResult[0]?.net_revenue || 0);
+  const stockCount = Number(stockResult[0]?.count || 0);
+  const stockValue = Number(stockResult[0]?.total_value || 0);
+  const itemsSold = Number(dailyResult[0]?.net_items_sold || 0);
+  const monthlyShrinkage = Number(shrinkageResult[0]?.shrinkage_value || 0);
+  const totalStock = stockCount;
   const stockLevels = distributionResult.map((d: any, i: number) => ({
     name: d.name,
     color: i % 2 === 0 ? '#3b82f6' : '#ec4899', // Blue/Pink alternating
@@ -93,9 +96,9 @@ export default async function DashboardPage() {
       {/* ── Metric Cards ── */}
       <div className="metrics-grid">
         <MetricCard title="Today's Revenue"   value={`K${Number(todayRevenue).toLocaleString('en-US', { minimumFractionDigits: 2 })}`} trend="Real-time data" trendUp={true}  delay="delay-1" />
-        <MetricCard title="Active Stock Value" value={`K${Number(stockValue).toLocaleString('en-US', { minimumFractionDigits: 2 })}`} trend={`${stockCount} garments in stock`} trendUp={true}  delay="delay-2" />
-        <MetricCard title="Total Items Sold"   value={`${itemsSold} items`}   trend="All locations"  trendUp={true}  delay="delay-3" />
-        <MetricCard title="Monthly Shrinkage"  value={`K${monthlyShrinkage.toFixed(2)}`} trend="No missing items" trendUp={true}  delay="delay-3" />
+        <MetricCard title="Retail Stock Value" value={`K${stockValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`} trend={`${stockCount} garments in stock`} trendUp={true}  delay="delay-2" />
+        <MetricCard title="Net Items Sold Today" value={`${itemsSold} items`} trend="Sales less returns" trendUp={true} delay="delay-3" />
+        <MetricCard title="Monthly Shrinkage" value={`K${monthlyShrinkage.toFixed(2)}`} trend="Completed stocktakes" trendUp={monthlyShrinkage === 0} delay="delay-3" />
       </div>
 
       {/* ── Sales Trend + Recent Transactions ── */}

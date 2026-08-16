@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LineChart, CheckCircle2, Clock, AlertCircle, TrendingUp, DollarSign, Receipt, CreditCard } from 'lucide-react';
+import { CheckCircle2, Clock, AlertCircle, TrendingUp, Receipt, ShieldCheck } from 'lucide-react';
 import { OwnerSection, OwnerMetricCard, OwnerBadge } from '@/components/SuperAdminBlocks';
 
 type BillingEvent = {
@@ -10,7 +10,8 @@ type BillingEvent = {
   tenant_name: string;
   event_type: string;
   amount: number;
-  status: 'PENDING' | 'POSTED' | 'OVERDUE' | 'FAILED' | 'VOID';
+  currency: string;
+  status: string;
   due_at: string | null;
   created_at: string;
 };
@@ -18,7 +19,6 @@ type BillingEvent = {
 export default function RevenuePipelinePage() {
   const [data, setData] = useState<{ mrr: number; overdue: BillingEvent[]; events: BillingEvent[] } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [processingId, setProcessingId] = useState<string | null>(null);
 
   const loadData = () => {
     fetch('/api/superadmin/revenue')
@@ -32,21 +32,6 @@ export default function RevenuePipelinePage() {
     loadData();
   }, []);
 
-  const markAsPaid = async (eventId: string) => {
-    if (!confirm('Mark this invoice as PAID? This indicates funds were received via MoMo/Bank.')) return;
-    setProcessingId(eventId);
-    try {
-      await fetch('/api/superadmin/revenue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'MARK_PAID', eventId })
-      });
-      loadData();
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '28px', maxWidth: '1000px' }}>
       
@@ -55,7 +40,7 @@ export default function RevenuePipelinePage() {
         <div>
           <h1 style={{ margin: 0, fontSize: '30px' }}>Revenue & Billing</h1>
           <p className="subtitle" style={{ marginTop: '6px' }}>
-            Track SaaS subscription revenue, manage manual collections, and monitor overdue accounts.
+            Track contracted revenue, provider-verified collections, and overdue accounts.
           </p>
         </div>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '999px', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.25)', color: '#4ade80', fontSize: '13px', fontWeight: 700 }}>
@@ -68,25 +53,25 @@ export default function RevenuePipelinePage() {
         <OwnerMetricCard 
           label="Monthly Recurring Revenue" 
           value={loading ? '...' : `ZMW ${data?.mrr.toLocaleString() || '0'}`} 
-          note="Projected from 1,500 ZMW per active store location" 
+          note="Contracted plan revenue from active tenants"
           tone="primary" 
         />
         <OwnerMetricCard 
           label="Pending / Overdue" 
           value={loading ? '...' : String(data?.overdue.length || 0)} 
-          note="Invoices awaiting manual collection" 
+          note="Open invoices requiring verified settlement"
           tone="secondary" 
         />
         <OwnerMetricCard 
           label="Collection Mode" 
-          value="Hybrid" 
-          note="Offline/MoMo collection supported" 
+          value="Verified"
+          note="Provider confirmation required before activation"
           tone="primary" 
         />
       </div>
 
       {/* Overdue Collection Queue */}
-      <OwnerSection title="Collection Queue" subtitle="Tenants with pending or overdue subscription payments.">
+      <OwnerSection title="Collection Queue" subtitle="Open invoices that still require verified settlement.">
         {loading ? (
           <div style={{ padding: '20px', color: 'var(--text-muted)' }}>Loading queue...</div>
         ) : !data?.overdue.length ? (
@@ -112,16 +97,12 @@ export default function RevenuePipelinePage() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 800, fontSize: '18px', color: 'var(--text-main)' }}>ZMW {invoice.amount.toLocaleString()}</div>
-                    <OwnerBadge tone="secondary">OVERDUE</OwnerBadge>
+                    <div style={{ fontWeight: 800, fontSize: '18px', color: 'var(--text-main)' }}>{invoice.currency} {invoice.amount.toLocaleString()}</div>
+                    <OwnerBadge tone={invoice.status === 'OVERDUE' ? 'warning' : 'secondary'}>{invoice.status}</OwnerBadge>
                   </div>
-                  <button 
-                    onClick={() => markAsPaid(invoice.id)}
-                    disabled={processingId === invoice.id}
-                    style={{ padding: '10px 18px', borderRadius: '8px', background: 'var(--text-main)', color: 'var(--bg-color)', border: 'none', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-                  >
-                    {processingId === invoice.id ? 'Processing...' : <><CreditCard size={16} /> Mark Paid</>}
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--text-muted)', fontSize: 12 }}>
+                    <ShieldCheck size={15} /> Awaiting verified payment
+                  </div>
                 </div>
               </div>
             ))}
@@ -130,7 +111,7 @@ export default function RevenuePipelinePage() {
       </OwnerSection>
 
       {/* Ledger */}
-      <OwnerSection title="Revenue Ledger" subtitle="Recent billing events, trial conversions, and subscription charges.">
+      <OwnerSection title="Revenue Ledger" subtitle="Canonical provider payment attempts and outcomes.">
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
             <thead>
@@ -153,10 +134,10 @@ export default function RevenuePipelinePage() {
                     </div>
                   </td>
                   <td style={{ padding: '14px 12px', fontSize: '14px', fontWeight: 700 }}>
-                    {ev.amount > 0 ? `ZMW ${ev.amount.toLocaleString()}` : '--'}
+                    {ev.amount > 0 ? `${ev.currency} ${ev.amount.toLocaleString()}` : '--'}
                   </td>
                   <td style={{ padding: '14px 12px' }}>
-                    <OwnerBadge tone={ev.status === 'POSTED' ? 'primary' : ev.status === 'OVERDUE' ? 'secondary' : 'secondary'}>
+                    <OwnerBadge tone={ev.status === 'SUCCEEDED' ? 'primary' : ev.status === 'FAILED' ? 'danger' : 'secondary'}>
                       {ev.status}
                     </OwnerBadge>
                   </td>

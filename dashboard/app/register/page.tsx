@@ -58,7 +58,7 @@ export default function PublicRegistration() {
           <CheckCircle2 size={56} color="var(--primary)" style={{ margin: '0 auto 24px' }} />
           <h2 style={{ fontSize: '28px', color: 'var(--text-main)', marginBottom: '12px' }}>Workspace Created!</h2>
           <p style={{ color: 'var(--text-muted)', marginBottom: '32px', lineHeight: 1.6, fontSize: '15px' }}>
-            Your 5-day free trial is now active. Next, we will walk you through setting up your store profile, adding products, and configuring ZRA compliance.
+            Your 7-day free trial is now active. Next, we will walk you through setting up your store profile, adding products, and configuring ZRA compliance.
           </p>
           <button 
             onClick={() => router.push('/setup')}
@@ -117,48 +117,48 @@ export default function PublicRegistration() {
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
               <div>
-                <label style={labelStyle}>Business Name</label>
-                <input required name="business_name" type="text" placeholder="Mwape General Trading" style={inputStyle} />
+                <label htmlFor="business_name" style={labelStyle}>Business Name</label>
+                <input id="business_name" required name="business_name" type="text" placeholder="Mwape General Trading" style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>Owner Full Name</label>
-                <input required name="owner_name" type="text" placeholder="Mwila Chanda" style={inputStyle} />
+                <label htmlFor="owner_name" style={labelStyle}>Owner Full Name</label>
+                <input id="owner_name" required name="owner_name" type="text" placeholder="Mwila Chanda" style={inputStyle} />
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
               <div>
-                <label style={labelStyle}>Phone Number</label>
-                <input required name="phone" type="tel" placeholder="0977 123 456" style={inputStyle} />
+                <label htmlFor="phone" style={labelStyle}>Phone Number</label>
+                <input id="phone" required name="phone" type="tel" placeholder="0977 123 456" style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>Email Address</label>
-                <input required name="email" type="email" placeholder="mwila@mwapetrading.co.zm" style={inputStyle} />
+                <label htmlFor="email" style={labelStyle}>Email Address</label>
+                <input id="email" required name="email" type="email" placeholder="mwila@mwapetrading.co.zm" style={inputStyle} />
               </div>
             </div>
 
             <div>
-              <label style={labelStyle}>Store Address</label>
-              <input required name="address" type="text" placeholder="Plot 42, Cairo Road, Lusaka" style={inputStyle} />
+              <label htmlFor="address" style={labelStyle}>Store Address</label>
+              <input id="address" required name="address" type="text" placeholder="Plot 42, Cairo Road, Lusaka" style={inputStyle} />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
               <div>
-                <label style={labelStyle}>4-Digit PIN</label>
-                <input required name="pin" type="password" inputMode="numeric" pattern="[0-9]{4}" minLength={4} maxLength={4} autoComplete="new-password" placeholder="••••" style={inputStyle} />
+                <label htmlFor="pin" style={labelStyle}>4-Digit PIN</label>
+                <input id="pin" required name="pin" type="password" inputMode="numeric" pattern="[0-9]{4}" minLength={4} maxLength={4} autoComplete="new-password" placeholder="••••" style={inputStyle} />
               </div>
               <div>
-                <label style={labelStyle}>Confirm PIN</label>
-                <input required name="confirm_pin" type="password" inputMode="numeric" pattern="[0-9]{4}" minLength={4} maxLength={4} autoComplete="new-password" placeholder="••••" style={inputStyle} />
+                <label htmlFor="confirm_pin" style={labelStyle}>Confirm PIN</label>
+                <input id="confirm_pin" required name="confirm_pin" type="password" inputMode="numeric" pattern="[0-9]{4}" minLength={4} maxLength={4} autoComplete="new-password" placeholder="••••" style={inputStyle} />
               </div>
             </div>
 
             <div>
-              <label style={labelStyle}>Plan</label>
-              <select required name="tier" style={{...inputStyle, cursor: 'pointer', appearance: 'none'}}>
-                <option value="boutique_starter">Starter — 1 Location — ZMW 2,500/mo</option>
-                <option value="growth">Growth — Up to 5 Locations — ZMW 3,500/mo</option>
-                <option value="enterprise_fleet">Enterprise — Unlimited Locations — ZMW 9,500/mo</option>
+              <label htmlFor="tier" style={labelStyle}>Plan</label>
+              <select id="tier" required name="tier" style={{...inputStyle, cursor: 'pointer', appearance: 'none'}}>
+                <option value="boutique_starter">Boutique Starter — 1 Location — ZMW 1,200/mo</option>
+                <option value="growth">Growth — Up to 3 Locations — ZMW 3,500/mo</option>
+                <option value="enterprise_fleet">Enterprise Fleet — Up to 20 Locations — ZMW 9,500/mo</option>
               </select>
             </div>
 

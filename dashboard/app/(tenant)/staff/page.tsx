@@ -148,7 +148,7 @@ export default function StaffPage() {
   return (
     <div className="animate-fade-in">
       <h1>Staff Management</h1>
-      <p className="subtitle">Create and manage users who can log in to this store's systems.</p>
+      <p className="subtitle">Create and manage users who can log in to this store&apos;s systems.</p>
 
       {success && (
         <div style={{ margin: '16px 0', padding: '12px 16px', background: 'rgba(74,222,128,0.1)', border: '1px solid var(--primary)', borderRadius: '8px', color: 'var(--primary)', fontSize: '14px' }}>

@@ -1,290 +1,290 @@
-'use client';
+'use client'
 
-import { useEffect, useState } from 'react';
-import { CheckCircle2, Loader2, Store, CalendarDays, Lock, CreditCard, ArrowUpRight, ShieldCheck, Download } from 'lucide-react';
+import {
+  ArrowUpRight,
+  CalendarDays,
+  CheckCircle2,
+  CreditCard,
+  Download,
+  Loader2,
+  ShieldCheck,
+  Store,
+  Users,
+} from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+
+type Plan = {
+  code: string
+  name: string
+  description: string | null
+  price_zmw: string
+  currency: string
+  max_locations: number
+  max_users: number
+  features: string[]
+}
+
+type Subscription = {
+  tenant_name: string
+  tenant_status: string
+  subscription_end_date: string | null
+  active_locations: number
+  active_users: number
+  plan: Plan
+}
+
+type Payment = {
+  id: string
+  provider: string
+  provider_reference: string
+  amount: string
+  currency: string
+  status: string
+  created_at: string
+  succeeded_at: string | null
+}
+
+type BillingResponse = {
+  billing: {
+    subscription: Subscription
+    amountDue: number
+    openInvoice: { invoice_number: string; due_at: string; status: string } | null
+    payments: Payment[]
+  }
+}
+
+const money = (amount: number, currency = 'ZMW') =>
+  new Intl.NumberFormat('en-ZM', { style: 'currency', currency }).format(amount)
 
 export default function SubscriptionPage() {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any>(null);
-  const [paying, setPaying] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState('260');
+  const [data, setData] = useState<BillingResponse['billing'] | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [paying, setPaying] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('260')
+
+  const loadBilling = useCallback(async () => {
+    try {
+      const response = await fetch('/api/settings', { cache: 'no-store' })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'Unable to load billing')
+      setData((payload as BillingResponse).billing)
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load billing')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    loadBilling();
-  }, []);
+    void loadBilling()
+  }, [loadBilling])
 
-  const loadBilling = async () => {
-    try {
-      const res = await fetch('/api/settings');
-      const json = await res.json();
-      const locRes = await fetch('/api/locations');
-      const locJson = await locRes.json();
-      const locations = Array.isArray(locJson) ? locJson : (locJson.locations || []);
-      setData({
-        tenant: json.tenant,
-        history: json.billing_history || [],
-        locations: locations.filter((l: any) => l.is_active).length || 1,
-      });
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const pollPaymentStatus = async (referenceId: string, attempts = 0) => {
-    if (attempts >= 18) { // 90 seconds max
-      setPaying(false);
-      alert('Payment is taking longer than expected. We will update your dashboard once MTN confirms it.');
-      return;
-    }
-    
-    try {
-      const res = await fetch(`/api/subscription/momo/status/${referenceId}`);
-      if (res.ok) {
-        const json = await res.json();
-        if (json.status === 'SUCCESSFUL') {
-          setPaying(false);
-          setSuccess(true);
-          await loadBilling();
-          setTimeout(() => setSuccess(false), 5000);
-          return;
-        } else if (json.status === 'FAILED') {
-          setPaying(false);
-          alert('Payment was declined or cancelled. Please try again.');
-          return;
-        }
+  const pollPaymentStatus = useCallback(async (referenceId: string) => {
+    for (let attempt = 0; attempt < 18; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, attempt === 0 ? 1500 : 5000))
+      const response = await fetch(`/api/subscription/momo/status/${encodeURIComponent(referenceId)}`, {
+        cache: 'no-store',
+      }).catch(() => null)
+      if (!response?.ok) continue
+      const result = await response.json()
+      if (result.status === 'SUCCEEDED') {
+        setNotice('Payment confirmed. Your subscription is active.')
+        await loadBilling()
+        return
       }
-    } catch (err) {
-      console.error('Polling error:', err);
+      if (result.status === 'FAILED') {
+        throw new Error('MTN declined or cancelled the payment request.')
+      }
     }
-    
-    // Continue polling
-    setTimeout(() => pollPaymentStatus(referenceId, attempts + 1), 5000);
-  };
+    setNotice('MTN is still processing this payment. You can safely leave this page; reconciliation will continue.')
+  }, [loadBilling])
 
   const handleMtnPayment = async () => {
-    if (phoneNumber.length < 10) return alert('Please enter a valid MTN number (e.g. 26096...)');
-    
-    setPaying(true);
+    if (!/^260\d{9}$/.test(phoneNumber)) {
+      setError('Enter a Zambian MTN number in the format 26096XXXXXXX.')
+      return
+    }
+
+    setPaying(true)
+    setError('')
+    setNotice('')
     try {
-      const amount = (data?.locations || 1) * 2500;
-      const res = await fetch('/api/subscription/momo/request-to-pay', {
+      const response = await fetch('/api/subscription/momo/request-to-pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, phoneNumber }),
-      });
-      if (!res.ok) throw new Error('Payment failed');
-      const json = await res.json();
-      
-      alert(json.message || 'A payment prompt has been sent to ' + phoneNumber + '. Please check your phone and enter your PIN.');
-      
-      if (json.referenceId) {
-        pollPaymentStatus(json.referenceId);
-      } else {
-        setPaying(false); // Fallback if no reference returned
-      }
-    } catch {
-      alert('Failed to send payment prompt. Please try again.');
-      setPaying(false);
+        body: JSON.stringify({ phoneNumber }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Unable to start payment')
+      setNotice(result.message || 'Approve the payment prompt on your phone.')
+      if (result.referenceId) await pollPaymentStatus(result.referenceId)
+    } catch (paymentError) {
+      setError(paymentError instanceof Error ? paymentError.message : 'Unable to process payment')
+    } finally {
+      setPaying(false)
     }
-  };
+  }
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', minHeight: '60vh', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
-        <Loader2 size={36} className="spin" />
+      <div style={{ display: 'grid', minHeight: '60vh', placeItems: 'center', color: 'var(--primary)' }}>
+        <Loader2 size={36} className="spin" aria-label="Loading subscription" />
       </div>
-    );
+    )
   }
 
-  const isTrial = data?.tenant?.status === 'TRIAL';
-  const isActive = data?.tenant?.status === 'ACTIVE' || data?.tenant?.status === 'active';
-  const amountDue = (data?.locations || 1) * 2500;
+  if (!data) {
+    return <div className="glass-panel" style={{ padding: 24, color: 'var(--danger)' }}>{error || 'Billing is unavailable.'}</div>
+  }
 
-  const tierLabel: Record<string, string> = {
-    boutique_starter: 'Boutique Starter',
-    growth: 'Growth',
-    enterprise_fleet: 'Enterprise Fleet',
-  };
-  const planName = tierLabel[data?.tenant?.subscription_tier] || 'Premium SaaS Plan';
+  const { subscription, payments, openInvoice, amountDue } = data
+  const isActive = subscription.tenant_status === 'ACTIVE'
+  const canPay = !isActive || Boolean(openInvoice)
+  const paidThrough = subscription.subscription_end_date
+    ? new Date(subscription.subscription_end_date).toLocaleDateString('en-ZM', { dateStyle: 'long' })
+    : 'Trial period'
 
   return (
-    <div className="animate-fade-in" style={{ paddingBottom: '60px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
+    <div className="animate-fade-in" style={{ paddingBottom: 60 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, alignItems: 'flex-start', marginBottom: 32, flexWrap: 'wrap' }}>
         <div>
           <h1>Billing & Subscription</h1>
-          <p className="subtitle">Centrally manage your active plan, payment methods, and billing history.</p>
+          <p className="subtitle">Plan capacity, invoices, and verified payment history for {subscription.tenant_name}.</p>
         </div>
-        {!isTrial && (
-          <button 
-            onClick={() => window.location.href = 'mailto:billing@retailos.com?subject=Upgrade%20Request'}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--primary)', color: '#0f1115', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 14px rgba(74,222,128,0.2)' }}
-          >
-            <ArrowUpRight size={18} />
-            Upgrade Plan
-          </button>
-        )}
+        <a
+          href="mailto:billing@retailos.com?subject=Retail%20OS%20plan%20change"
+          style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--primary)', color: '#0f1115', padding: '10px 18px', borderRadius: 8, fontWeight: 700, textDecoration: 'none' }}
+        >
+          <ArrowUpRight size={18} /> Change plan
+        </a>
       </div>
 
-      {success && (
-        <div style={{ padding: '16px 20px', background: 'var(--primary-glow)', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: '12px', marginBottom: '32px', display: 'flex', alignItems: 'center', gap: '12px', fontWeight: 600 }}>
-          <CheckCircle2 size={20} />
-          Payment successfully processed. Your workspace is fully secured.
+      {notice && (
+        <div role="status" style={{ padding: '14px 18px', background: 'var(--primary-glow)', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: 10, marginBottom: 20, display: 'flex', gap: 10 }}>
+          <CheckCircle2 size={20} /> {notice}
+        </div>
+      )}
+      {error && (
+        <div role="alert" style={{ padding: '14px 18px', background: 'rgba(239,68,68,.1)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 10, marginBottom: 20 }}>
+          {error}
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px', alignItems: 'start' }}>
-        
-        {/* Active Plan Card */}
-        <div className="glass-panel" style={{ padding: '32px', position: 'relative' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ width: '48px', height: '48px', background: 'var(--primary-glow)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 24, alignItems: 'start' }}>
+        <section className="glass-panel" style={{ padding: 32 }} aria-labelledby="active-plan-heading">
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', marginBottom: 24 }}>
+            <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+              <div style={{ width: 48, height: 48, display: 'grid', placeItems: 'center', borderRadius: 12, background: 'var(--primary-glow)', color: 'var(--primary)' }}>
                 <Store size={24} />
               </div>
               <div>
-                <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{planName}</h2>
-                <div style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '2px' }}>
-                  {data?.locations} Licensed Branch{data?.locations !== 1 ? 'es' : ''}
-                </div>
+                <h2 id="active-plan-heading" style={{ margin: 0, fontSize: 21 }}>{subscription.plan.name}</h2>
+                <div style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 3 }}>Paid through {paidThrough}</div>
               </div>
             </div>
-            
-            {/* Status Badge */}
-            <div>
-              {isTrial && (
-                <span style={{ padding: '6px 12px', borderRadius: '20px', background: 'rgba(245,158,11,0.1)', color: 'var(--warning)', fontSize: '12px', fontWeight: 700, border: '1px solid rgba(245,158,11,0.2)' }}>
-                  Free Trial
-                </span>
-              )}
-              {isActive && (
-                <span style={{ padding: '6px 12px', borderRadius: '20px', background: 'var(--primary-glow)', color: 'var(--primary)', fontSize: '12px', fontWeight: 700, border: '1px solid rgba(74,222,128,0.2)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <ShieldCheck size={14} /> Active
-                </span>
-              )}
-              {!isTrial && !isActive && (
-                <span style={{ padding: '6px 12px', borderRadius: '20px', background: 'rgba(239,68,68,0.1)', color: 'var(--danger)', fontSize: '12px', fontWeight: 700, border: '1px solid rgba(239,68,68,0.2)' }}>
-                  Suspended
-                </span>
-              )}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background: isActive ? 'var(--primary-glow)' : 'rgba(245,158,11,.1)', color: isActive ? 'var(--primary)' : 'var(--warning)', fontSize: 12, fontWeight: 800 }}>
+              <ShieldCheck size={14} /> {subscription.tenant_status}
+            </span>
+          </div>
+
+          <div style={{ padding: 22, background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', borderRadius: 12, marginBottom: 22 }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>
+              {openInvoice ? `${openInvoice.invoice_number} · ${openInvoice.status}` : 'Plan price per billing cycle'}
+            </div>
+            <div style={{ fontSize: 38, fontWeight: 800, marginTop: 6 }}>
+              {money(openInvoice ? amountDue : Number(subscription.plan.price_zmw), subscription.plan.currency)}
             </div>
           </div>
 
-          <div style={{ padding: '24px', background: 'var(--hover-bg)', borderRadius: '12px', border: '1px solid var(--panel-border)', marginBottom: '24px' }}>
-            <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Current Billing Cycle</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-              <span style={{ fontSize: '40px', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--text-main)' }}>
-                ZMW {amountDue.toLocaleString()}
-              </span>
-              <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>/ month</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+            <div style={{ padding: 14, border: '1px solid var(--panel-border)', borderRadius: 10 }}>
+              <Store size={17} color="var(--secondary)" />
+              <div style={{ marginTop: 8, fontWeight: 700 }}>{subscription.active_locations} / {subscription.plan.max_locations}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Active stores</div>
+            </div>
+            <div style={{ padding: 14, border: '1px solid var(--panel-border)', borderRadius: 10 }}>
+              <Users size={17} color="var(--secondary)" />
+              <div style={{ marginTop: 8, fontWeight: 700 }}>{subscription.active_users} / {subscription.plan.max_users}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Active users</div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: isTrial ? '32px' : '0' }}>
-            {[
-              'Unlimited System Users & Cashiers',
-              'Unlimited SKUs & Sales Volume',
-              'Real-Time Cross-Branch Synchronization',
-              'ZRA Smart Invoice / VSDC Integration',
-            ].map((feature) => (
-              <div key={feature} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', color: 'var(--text-main)', fontWeight: 500 }}>
-                <CheckCircle2 size={18} color="var(--primary)" />
-                {feature}
+          <div style={{ display: 'grid', gap: 11 }}>
+            {subscription.plan.features.map((feature) => (
+              <div key={feature} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 14 }}>
+                <CheckCircle2 size={17} color="var(--primary)" /> {feature}
               </div>
             ))}
           </div>
 
-          {!isActive && (
-            <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px dashed var(--panel-border)' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '15px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Lock size={16} color="var(--primary)" />
-                Secure Your Workspace
-              </h3>
-              <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
-                Your trial will expire soon. Process your payment today to maintain uninterrupted access to your enterprise data.
+          {canPay && (
+            <div style={{ marginTop: 28, paddingTop: 24, borderTop: '1px dashed var(--panel-border)' }}>
+              <h3 style={{ margin: '0 0 7px', fontSize: 16 }}>Pay securely with MTN MoMo</h3>
+              <p style={{ margin: '0 0 16px', color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5 }}>
+                The amount is taken from your server-issued invoice; it cannot be changed in the browser.
               </p>
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
-                  <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px', fontWeight: 600, color: 'var(--text-muted)' }}>MTN:</div>
-                  <input 
-                    type="text" 
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\\D/g, ''))}
-                    placeholder="26096XXXXXXX"
-                    style={{ width: '100%', padding: '12px 12px 12px 55px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'var(--bg-color)', color: 'var(--text-main)', fontSize: '15px', fontWeight: 600, outline: 'none' }}
-                  />
-                </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <input
+                  aria-label="MTN Mobile Money number"
+                  inputMode="numeric"
+                  value={phoneNumber}
+                  onChange={(event) => setPhoneNumber(event.target.value.replace(/\D/g, '').slice(0, 12))}
+                  placeholder="26096XXXXXXX"
+                  style={{ flex: '1 1 190px', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--panel-border)', background: 'var(--bg-color)', color: 'var(--text-main)', fontWeight: 600 }}
+                />
                 <button
                   onClick={handleMtnPayment}
                   disabled={paying}
-                  style={{ flex: 1, minWidth: '160px', background: '#ffcc00', color: '#000', fontWeight: 700, padding: '12px 16px', borderRadius: '8px', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'opacity 0.2s' }}
+                  style={{ flex: '1 1 170px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: 0, borderRadius: 8, padding: '12px 16px', background: '#ffcc00', color: '#111', fontWeight: 800, cursor: paying ? 'wait' : 'pointer', opacity: paying ? .7 : 1 }}
                 >
-                  {paying ? <Loader2 size={16} className="spin" /> : 'Send PIN Prompt to Phone'}
+                  {paying ? <Loader2 size={17} className="spin" /> : <CreditCard size={17} />}
+                  {paying ? 'Confirming…' : `Pay ${money(amountDue, subscription.plan.currency)}`}
                 </button>
               </div>
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Billing History Card */}
-        <div className="glass-panel" style={{ padding: '32px' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 24px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <CalendarDays size={20} color="var(--primary)" />
-            Transaction History
-          </h3>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {data?.history?.length === 0 ? (
-              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)', background: 'var(--hover-bg)', borderRadius: '12px', border: '1px dashed var(--panel-border)', fontSize: '14px' }}>
-                No recent transactions found.
-              </div>
-            ) : (
-              data?.history?.map((evt: any) => (
-                <div key={evt.id} style={{ padding: '16px 20px', borderRadius: '12px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'transform 0.2s, box-shadow 0.2s' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: evt.status === 'POSTED' || evt.status === 'paid' ? 'var(--primary-glow)' : 'rgba(96,165,250,0.1)', color: evt.status === 'POSTED' || evt.status === 'paid' ? 'var(--primary)' : 'var(--secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <CreditCard size={18} />
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '14px', textTransform: 'capitalize', color: 'var(--text-main)' }}>
-                        {evt.event_type.replace(/_/g, ' ')}
+        <section className="glass-panel" style={{ padding: 32 }} aria-labelledby="payment-history-heading">
+          <h2 id="payment-history-heading" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 22px', fontSize: 18 }}>
+            <CalendarDays size={20} color="var(--primary)" /> Payment history
+          </h2>
+          {payments.length === 0 ? (
+            <div style={{ padding: '38px 20px', textAlign: 'center', color: 'var(--text-muted)', background: 'var(--hover-bg)', borderRadius: 12, border: '1px dashed var(--panel-border)' }}>
+              No payment attempts yet.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 11 }}>
+              {payments.map((payment) => {
+                const succeeded = payment.status === 'SUCCEEDED'
+                return (
+                  <div key={payment.id} style={{ padding: '15px 16px', borderRadius: 11, background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{payment.provider.replace(/_/g, ' ')}</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 3 }}>
+                        {new Date(payment.succeeded_at || payment.created_at).toLocaleDateString('en-ZM', { dateStyle: 'medium' })}
                       </div>
-                      <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        {new Date(evt.due_at || evt.effective_at).toLocaleDateString('en-ZM', { year: 'numeric', month: 'long', day: 'numeric' })}
+                      <div style={{ marginTop: 6, color: succeeded ? 'var(--primary)' : payment.status === 'FAILED' ? 'var(--danger)' : 'var(--warning)', fontSize: 11, fontWeight: 800 }}>
+                        {payment.status}
                       </div>
                     </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-main)' }}>
-                      {evt.currency || 'ZMW'} {Number(evt.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </div>
-                    <div style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      marginTop: '4px',
-                      fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
-                      background: evt.status === 'POSTED' || evt.status === 'paid' || evt.status === 'SUCCESSFUL' ? 'var(--primary-glow)' : 'rgba(245,158,11,0.1)',
-                      color: evt.status === 'POSTED' || evt.status === 'paid' || evt.status === 'SUCCESSFUL' ? 'var(--primary)' : 'var(--warning)',
-                    }}>
-                      {evt.status === 'POSTED' || evt.status === 'paid' || evt.status === 'SUCCESSFUL' ? 'SUCCESS' : evt.status}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <strong>{money(Number(payment.amount), payment.currency)}</strong>
+                      {succeeded && (
+                        <a href={`/api/subscription/receipt/${payment.id}`} target="_blank" rel="noopener noreferrer" aria-label="Open payment receipt" style={{ display: 'grid', placeItems: 'center', padding: 7, border: '1px solid var(--panel-border)', borderRadius: 7, color: 'var(--text-main)' }}>
+                          <Download size={16} />
+                        </a>
+                      )}
                     </div>
                   </div>
-                  {(evt.status === 'POSTED' || evt.status === 'paid' || evt.status === 'SUCCESSFUL') && (
-                    <div style={{ marginLeft: '16px' }}>
-                      <a href={`/api/subscription/receipt/${evt.id}`} target="_blank" rel="noopener noreferrer" style={{ background: 'transparent', border: '1px solid var(--panel-border)', color: 'var(--text-main)', padding: '6px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Download Receipt">
-                        <Download size={16} />
-                      </a>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
+                )
+              })}
+            </div>
+          )}
+        </section>
       </div>
     </div>
-  );
+  )
 }

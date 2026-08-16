@@ -2,8 +2,14 @@ export const dynamic = 'force-dynamic'
 
 import { adminPool } from '@/lib/db'
 import { hashPin, needsPinUpgrade, validPin, verifyPin } from '@/lib/pin'
-import { issueSession } from '@/lib/session'
-import { assertSessionConfiguration, SESSION_ROLES, type SessionRole } from '@/lib/session-token'
+import { setSessionDisplayCookies, type AppSession } from '@/lib/session'
+import { createClient } from '@/lib/supabase/server'
+import {
+  createSupabaseIdentity,
+  deleteSupabaseIdentity,
+  deriveSupabasePassword,
+} from '@/lib/supabase/identity'
+import { SESSION_ROLES, type SessionRole } from '@/lib/session-token'
 import {
   clearPlatformLoginFailures,
   clearStaffLoginFailures,
@@ -24,15 +30,53 @@ type StaffLoginRow = {
   location_name: string | null
   is_locked: boolean
   auth_version: number
+  auth_user_id: string | null
 }
 
 function invalidCredentials() {
   return NextResponse.json({ error: 'Invalid email or PIN' }, { status: 401 })
 }
 
+async function startSupabaseSession(
+  email: string,
+  pin: string,
+  currentAuthUserId: string | null,
+  linkIdentity: (userId: string) => Promise<void>,
+) {
+  const supabase = createClient()
+  const password = deriveSupabasePassword(email, pin)
+  let result = await supabase.auth.signInWithPassword({ email, password })
+
+  if (result.data.user) {
+    if (currentAuthUserId && currentAuthUserId !== result.data.user.id) {
+      await supabase.auth.signOut({ scope: 'local' })
+      return null
+    }
+    if (!currentAuthUserId) {
+      try {
+        await linkIdentity(result.data.user.id)
+      } catch (error) {
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined)
+        throw error
+      }
+    }
+    return result.data.user
+  }
+
+  if (currentAuthUserId) return null
+  const created = await createSupabaseIdentity(email, pin)
+  try {
+    await linkIdentity(created.id)
+  } catch (error) {
+    await deleteSupabaseIdentity(created.id).catch(console.error)
+    throw error
+  }
+  result = await supabase.auth.signInWithPassword({ email, password })
+  return result.data.user || null
+}
+
 export async function POST(req: Request) {
   try {
-    assertSessionConfiguration()
     const body = await req.json()
     const email = typeof body.email === 'string' ? body.email.trim().toLocaleLowerCase() : ''
     const pin = body.pin
@@ -42,7 +86,7 @@ export async function POST(req: Request) {
     }
 
     const adminResult = await adminPool.query(`
-      SELECT id, name, email, pin_hash, auth_version,
+      SELECT id, name, email, pin_hash, auth_version, auth_user_id,
              (lockout_until IS NOT NULL AND lockout_until > NOW()) AS is_locked
       FROM platform_admins
       WHERE LOWER(BTRIM(email)) = $1 AND is_active = true
@@ -64,6 +108,16 @@ export async function POST(req: Request) {
     }
     if (admin?.is_locked) return invalidCredentials()
     if (admin && await verifyPin(pin, admin.pin_hash)) {
+      const authUser = await startSupabaseSession(email, pin, admin.auth_user_id, async (userId) => {
+        await adminPool.query(
+          'UPDATE platform_admins SET auth_user_id = $1, updated_at = NOW() WHERE id = $2 AND auth_user_id IS NULL',
+          [userId, admin.id],
+        )
+      })
+      if (!authUser) {
+        await recordPlatformLoginFailure(admin.id)
+        return invalidCredentials()
+      }
       if (needsPinUpgrade(admin.pin_hash)) {
         await adminPool.query('UPDATE platform_admins SET pin_hash = $1, updated_at = NOW() WHERE id = $2', [
           await hashPin(pin),
@@ -73,12 +127,9 @@ export async function POST(req: Request) {
 
       await clearPlatformLoginFailures(admin.id)
 
-      await issueSession({
-        staffId: admin.id,
-        role: 'superadmin',
-        tenantId: null,
-        locationId: null,
-        shiftId: null,
+      setSessionDisplayCookies({
+        type: 'platform', authUserId: authUser.id, staffId: admin.id, role: 'superadmin',
+        tenantId: null, locationId: null, shiftId: null,
         authVersion: Number(admin.auth_version || 0),
       }, {
         staffName: admin.name,
@@ -102,6 +153,7 @@ export async function POST(req: Request) {
         s.tenant_id,
         s.location_id,
         s.auth_version,
+        s.auth_user_id,
         t.name AS tenant_name,
         t.status AS tenant_status,
         l.name AS location_name
@@ -167,12 +219,16 @@ export async function POST(req: Request) {
       stock_clerk: '/operations',
     }
 
-    const shiftResult = await adminPool.query(`
-      INSERT INTO shifts (tenant_id, staff_id, location_id)
-      VALUES ($1, $2, $3)
-      RETURNING id
-    `, [user.tenant_id, user.staff_id, user.location_id])
-    const shiftId = shiftResult.rows[0].id
+    const authUser = await startSupabaseSession(email, pin, user.auth_user_id, async (userId) => {
+      await adminPool.query(
+        'UPDATE staff SET auth_user_id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3 AND auth_user_id IS NULL',
+        [userId, user.staff_id, user.tenant_id],
+      )
+    })
+    if (!authUser) {
+      await recordStaffLoginFailure(email)
+      return invalidCredentials()
+    }
 
     if (needsPinUpgrade(user.pin_hash)) {
       await adminPool.query('UPDATE staff SET pin_hash = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3', [
@@ -184,19 +240,35 @@ export async function POST(req: Request) {
 
     await clearStaffLoginFailures(user.staff_id, user.tenant_id)
 
+    // A dropped browser session may leave a legitimate shift open. Reuse the
+    // single database-enforced open shift instead of creating duplicates.
+    const shiftResult = await adminPool.query(`
+      INSERT INTO shifts (tenant_id, staff_id, location_id)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (tenant_id, staff_id) WHERE ended_at IS NULL
+      DO UPDATE SET location_id = shifts.location_id
+      RETURNING id, location_id
+    `, [user.tenant_id, user.staff_id, user.location_id])
+    if ((shiftResult.rows[0]?.location_id || null) !== (user.location_id || null)) {
+      await createClient().auth.signOut({ scope: 'local' }).catch(() => undefined)
+      return NextResponse.json({
+        error: 'An open shift belongs to a previous store assignment. Close it before signing in.',
+        code: 'OPEN_SHIFT_LOCATION_MISMATCH',
+      }, { status: 409 })
+    }
+    const shiftId = shiftResult.rows[0].id
+
     await adminPool.query(`
       INSERT INTO platform_access_events (tenant_id, staff_id, event_type, source, metadata)
       VALUES ($1, $2, 'LOGIN', 'DASHBOARD', $3)
     `, [user.tenant_id, user.staff_id, JSON.stringify({ role: user.role, location_id: user.location_id })])
 
-    await issueSession({
-      staffId: user.staff_id,
-      role: user.role,
-      tenantId: user.tenant_id,
-      locationId: user.location_id,
-      shiftId,
+    const session: AppSession = {
+      type: 'tenant', authUserId: authUser.id, staffId: user.staff_id, role: user.role,
+      tenantId: user.tenant_id, locationId: user.location_id, shiftId,
       authVersion: Number(user.auth_version || 0),
-    }, {
+    }
+    setSessionDisplayCookies(session, {
       staffName: user.staff_name,
       tenantName: user.tenant_name,
       locationName: user.location_name,

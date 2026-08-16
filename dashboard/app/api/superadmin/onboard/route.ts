@@ -17,12 +17,24 @@ export async function POST(req: Request) {
 
     await client.query('BEGIN');
 
+    const planResult = await client.query(`
+      SELECT id, max_locations
+      FROM subscription_plans
+      WHERE code = $1 AND is_active = TRUE
+      FOR SHARE
+    `, [tier]);
+    if (planResult.rowCount !== 1) {
+      await client.query('ROLLBACK');
+      return NextResponse.json({ error: 'Selected subscription plan is unavailable' }, { status: 409 });
+    }
+    const plan = planResult.rows[0];
+
     // 1. Insert Tenant
     const tenantRes = await client.query(`
-      INSERT INTO tenants (name, subscription_tier, status, max_locations)
-      VALUES ($1, $2, 'TRIAL', $3)
+      INSERT INTO tenants (name, subscription_tier, subscription_plan_id, status, max_locations)
+      VALUES ($1, $2, $3, 'TRIAL', $4)
       RETURNING id
-    `, [name, tier, tier === 'enterprise_fleet' ? 20 : tier === 'growth' ? 5 : 1]);
+    `, [String(name).trim(), tier, plan.id, plan.max_locations]);
 
     const tenantId = tenantRes.rows[0].id;
 

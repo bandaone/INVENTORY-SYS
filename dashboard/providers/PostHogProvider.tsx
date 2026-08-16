@@ -2,29 +2,33 @@
 
 import posthog from 'posthog-js';
 import { PostHogProvider as PHProvider } from 'posthog-js/react';
-import { useEffect, Suspense } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 
-if (typeof window !== 'undefined') {
-  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
+const analyticsEnabled = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === 'true'
+  && Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY)
+
+if (typeof window !== 'undefined' && analyticsEnabled) {
+  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY as string, {
     api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com',
     person_profiles: 'identified_only',
     capture_pageview: false,
+    autocapture: false,
+    disable_session_recording: true,
+    secure_cookie: process.env.NODE_ENV === 'production',
   });
 }
 
-// Inner component that uses useSearchParams — MUST be inside <Suspense>
 function PageviewTracker() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   useEffect(() => {
-    if (pathname && typeof window !== 'undefined') {
-      const query = searchParams?.toString();
-      const url = window.origin + pathname + (query ? `?${query}` : '');
-      posthog.capture('$pageview', { $current_url: url });
+    if (analyticsEnabled && pathname && typeof window !== 'undefined') {
+      // Query strings can contain search terms or provider references, so only
+      // the route pathname is sent to product analytics.
+      posthog.capture('$pageview', { $current_url: window.origin + pathname });
     }
-  }, [pathname, searchParams]);
+  }, [pathname]);
 
   return null;
 }
@@ -32,9 +36,7 @@ function PageviewTracker() {
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   return (
     <PHProvider client={posthog}>
-      <Suspense fallback={null}>
-        <PageviewTracker />
-      </Suspense>
+      <PageviewTracker />
       {children}
     </PHProvider>
   );

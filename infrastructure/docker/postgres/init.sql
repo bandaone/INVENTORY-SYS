@@ -15,6 +15,12 @@ BEGIN
   END IF;
 END $$;
 
+-- Re-assert every restricted attribute even when a persistent Docker volume
+-- already contains the role from an older initialization.
+ALTER ROLE retail_os_app LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE
+  NOREPLICATION NOBYPASSRLS;
+ALTER ROLE retail_os_app SET row_security = on;
+
 -- Create helper function for tenant context
 CREATE OR REPLACE FUNCTION set_tenant_context(tenant_uuid UUID)
 RETURNS VOID AS $$

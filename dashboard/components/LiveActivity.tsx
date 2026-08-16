@@ -85,7 +85,7 @@ export default function LiveActivity() {
         <div className="glass-panel">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
             <User size={16} color="var(--primary)" />
-            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Today's Staff Activity ({data?.activeShifts.length || 0})</h3>
+            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Today&apos;s Staff Activity ({data?.activeShifts.length || 0})</h3>
           </div>
           {!data?.activeShifts.length ? (
             <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No staff activity recorded today.</p>

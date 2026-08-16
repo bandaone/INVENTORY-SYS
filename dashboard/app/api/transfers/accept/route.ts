@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import type { PoolClient } from 'pg';
 import crypto from 'crypto';
 import { requireTenantSession, SessionError } from '@/lib/session';
+import { EntitlementError, requireEntitlement } from '@/lib/billing';
 
 const TRANSFER_ROLES = ['owner', 'store_manager', 'stock_clerk'] as const;
 
@@ -14,6 +15,7 @@ export async function POST(req: Request) {
   try {
     const session = await requireTenantSession(TRANSFER_ROLES);
     const tenantId = session.tenantId;
+    await requireEntitlement(tenantId, 'transfers');
     const staffId = session.staffId;
     const staffRole = session.role;
     const { location_id, serials } = await req.json();
@@ -149,6 +151,9 @@ export async function POST(req: Request) {
       await client.query('ROLLBACK');
     }
     if (error instanceof SessionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (error instanceof EntitlementError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error('[Transfers Accept Error]', error);

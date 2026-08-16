@@ -48,12 +48,12 @@ export default async function HealthPage() {
   const queue = queueRows[0] ?? {};
   const conflicts = conflictRows[0] ?? {};
   const derived = {
-    api_uptime_pct: latest?.api_uptime_pct ?? 99.99,
-    error_rate_pct: latest?.error_rate_pct ?? (Number(queue.failed || 0) > 0 ? 1.0 : 0),
+    api_uptime_pct: latest?.api_uptime_pct ?? null,
+    error_rate_pct: latest?.error_rate_pct ?? null,
     sync_backlog: latest?.sync_backlog ?? Number(queue.pending || 0),
     failed_jobs: latest?.failed_jobs ?? Number(queue.failed || 0),
     webhook_failures: latest?.webhook_failures ?? 0,
-    database_health: latest?.database_health ?? 'HEALTHY',
+    database_health: latest?.database_health ?? 'UNKNOWN',
     captured_at: latest?.captured_at ?? null,
   };
 
@@ -67,8 +67,8 @@ export default async function HealthPage() {
       </div>
 
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '18px' }}>
-        <OwnerMetricCard label="API uptime" value={formatPercent(derived.api_uptime_pct, 2)} note={derived.captured_at ? formatDateTime(derived.captured_at) : 'Derived from live activity'} tone="primary" />
-        <OwnerMetricCard label="Error rate" value={formatPercent(derived.error_rate_pct, 2)} note="Request and job error ratio" tone={Number(derived.error_rate_pct || 0) > 1 ? 'warning' : 'secondary'} />
+        <OwnerMetricCard label="API uptime" value={derived.api_uptime_pct == null ? 'Not measured' : formatPercent(derived.api_uptime_pct, 2)} note={derived.api_uptime_pct == null ? 'Connect an external availability monitor' : formatDateTime(derived.captured_at)} tone={derived.api_uptime_pct == null ? 'muted' : 'primary'} />
+        <OwnerMetricCard label="Error rate" value={derived.error_rate_pct == null ? 'Not measured' : formatPercent(derived.error_rate_pct, 2)} note="Requires an external request monitor" tone={derived.error_rate_pct == null ? 'muted' : Number(derived.error_rate_pct) > 1 ? 'warning' : 'secondary'} />
         <OwnerMetricCard label="Sync backlog" value={formatCount(derived.sync_backlog)} note={`${formatCount(queue.pending)} unsynced queue items`} tone={Number(derived.sync_backlog || 0) > 0 ? 'warning' : 'primary'} />
         <OwnerMetricCard label="Unresolved conflicts" value={formatCount(conflicts.unresolved)} note={`${formatCount(queue.failed)} failed queue rows`} tone={Number(conflicts.unresolved || 0) > 0 ? 'warning' : 'primary'} />
       </section>
@@ -83,7 +83,7 @@ export default async function HealthPage() {
           </section>
         ) : (
           <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
-            <OwnerStatPill label="Database" value={String(derived.database_health || 'HEALTHY')} tone="primary" />
+            <OwnerStatPill label="Database" value="Not measured" tone="muted" />
             <OwnerStatPill label="Failed jobs" value={formatCount(derived.failed_jobs)} tone={Number(derived.failed_jobs || 0) > 0 ? 'warning' : 'primary'} />
             <OwnerStatPill label="Webhook failures" value={formatCount(derived.webhook_failures)} tone="secondary" />
             <OwnerStatPill label="Queue pending" value={formatCount(derived.sync_backlog)} tone={Number(derived.sync_backlog || 0) > 0 ? 'warning' : 'primary'} />
@@ -98,8 +98,8 @@ export default async function HealthPage() {
               {snapshotRows.map((row: any) => (
                 <tr key={row.captured_at} style={{ borderBottom: '1px solid var(--panel-border)' }}>
                   <td style={{ padding: '14px 12px', color: 'var(--text-muted)' }}>{formatDateTime(row.captured_at)}</td>
-                  <td style={{ padding: '14px 12px', color: 'var(--text-main)' }}>{formatPercent(row.api_uptime_pct, 2)}</td>
-                  <td style={{ padding: '14px 12px', color: 'var(--text-main)' }}>{formatPercent(row.error_rate_pct, 2)}</td>
+                  <td style={{ padding: '14px 12px', color: 'var(--text-main)' }}>{row.api_uptime_pct == null ? 'Not measured' : formatPercent(row.api_uptime_pct, 2)}</td>
+                  <td style={{ padding: '14px 12px', color: 'var(--text-main)' }}>{row.error_rate_pct == null ? 'Not measured' : formatPercent(row.error_rate_pct, 2)}</td>
                   <td style={{ padding: '14px 12px', color: 'var(--text-main)' }}>{formatCount(row.sync_backlog)}</td>
                   <td style={{ padding: '14px 12px' }}>
                     <OwnerBadge tone={safeUpper(row.database_health) === 'HEALTHY' ? 'primary' : 'warning'}>{String(row.database_health || 'UNKNOWN')}</OwnerBadge>

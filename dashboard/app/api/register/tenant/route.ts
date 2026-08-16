@@ -2,26 +2,25 @@ export const dynamic = 'force-dynamic'
 
 import { adminPool } from '@/lib/db'
 import { hashPin, validPin } from '@/lib/pin'
-import { issueSession } from '@/lib/session'
-import { assertSessionConfiguration } from '@/lib/session-token'
+import { setSessionDisplayCookies, type AppSession } from '@/lib/session'
+import { createClient } from '@/lib/supabase/server'
+import {
+  createSupabaseIdentity,
+  deleteSupabaseIdentity,
+  deriveSupabasePassword,
+} from '@/lib/supabase/identity'
 import { NextResponse } from 'next/server'
 import type { PoolClient } from 'pg'
 
 const TIERS = ['boutique_starter', 'growth', 'enterprise_fleet'] as const
 type Tier = (typeof TIERS)[number]
 
-function maxLocationsFor(tier: Tier) {
-  if (tier === 'growth') return 5
-  if (tier === 'enterprise_fleet') return 9999
-  return 1
-}
-
 export async function POST(req: Request) {
   let client: PoolClient | null = null
   let inTransaction = false
+  let authUserId: string | null = null
 
   try {
-    assertSessionConfiguration()
     const data = await req.json()
     const businessName = typeof data.business_name === 'string' ? data.business_name.trim() : ''
     const ownerName = typeof data.owner_name === 'string' ? data.owner_name.trim() : ''
@@ -76,11 +75,23 @@ export async function POST(req: Request) {
       }, { status: 409 })
     }
 
+    const authUser = await createSupabaseIdentity(email, pin)
+    authUserId = authUser.id
+
+    const planResult = await client.query(`
+      SELECT id, max_locations
+      FROM subscription_plans
+      WHERE code = $1 AND is_active = TRUE
+      FOR SHARE
+    `, [tier])
+    if (planResult.rowCount !== 1) throw new Error('Selected subscription plan is unavailable')
+    const plan = planResult.rows[0]
+
     const tenantResult = await client.query(`
-      INSERT INTO tenants (name, subscription_tier, status, max_locations)
-      VALUES ($1, $2, 'TRIAL', $3)
+      INSERT INTO tenants (name, subscription_tier, subscription_plan_id, status, max_locations)
+      VALUES ($1, $2, $3, 'TRIAL', $4)
       RETURNING id
-    `, [businessName, tier, maxLocationsFor(tier)])
+    `, [businessName, tier, plan.id, plan.max_locations])
     const tenantId = tenantResult.rows[0].id
 
     const locationResult = await client.query(`
@@ -91,10 +102,10 @@ export async function POST(req: Request) {
     const location = locationResult.rows[0]
 
     const staffResult = await client.query(`
-      INSERT INTO staff (tenant_id, name, email, role, pin_hash, location_id)
-      VALUES ($1, $2, $3, 'owner', $4, $5)
+      INSERT INTO staff (tenant_id, auth_user_id, name, email, role, pin_hash, location_id)
+      VALUES ($1, $2, $3, $4, 'owner', $5, $6)
       RETURNING id
-    `, [tenantId, ownerName, email, pinHash, location.id])
+    `, [tenantId, authUserId, ownerName, email, pinHash, location.id])
     const staffId = staffResult.rows[0].id
 
     await client.query(`
@@ -126,17 +137,21 @@ export async function POST(req: Request) {
         CURRENT_TIMESTAMP + INTERVAL '7 days', $3)
     `, [tenantId, tier, JSON.stringify({ trial_days: 7, source: 'public_registration' })])
 
+    const supabase = createClient()
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password: deriveSupabasePassword(email, pin),
+    })
+    if (authError || !authData.user) throw authError || new Error('Unable to start Supabase session')
+
     await client.query('COMMIT')
     inTransaction = false
 
-    await issueSession({
-      staffId,
-      role: 'owner',
-      tenantId,
-      locationId: location.id,
-      shiftId: null,
-      authVersion: 0,
-    }, {
+    const session: AppSession = {
+      type: 'tenant', authUserId: authData.user.id, staffId, role: 'owner',
+      tenantId, locationId: location.id, shiftId: null, authVersion: 0,
+    }
+    setSessionDisplayCookies(session, {
       staffName: ownerName,
       tenantName: businessName,
       locationName: location.name,
@@ -149,6 +164,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, tenantId, redirect: '/setup' }, { status: 201 })
   } catch (error) {
     if (inTransaction && client) await client.query('ROLLBACK').catch(() => {})
+    if (inTransaction && authUserId) await deleteSupabaseIdentity(authUserId).catch(console.error)
     console.error('Self-Serve Registration Error:', error)
     return NextResponse.json({
       error: 'Our system encountered a problem while provisioning your store. Please try again.',

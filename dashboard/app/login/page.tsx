@@ -149,8 +149,9 @@ export default function LoginPage() {
 
             {/* Email */}
             <div>
-              <label style={label}>Email Address</label>
+              <label htmlFor="login-email" style={label}>Email Address</label>
               <input
+                id="login-email"
                 style={textInput}
                 type="email"
                 autoComplete="username"
@@ -166,7 +167,7 @@ export default function LoginPage() {
             {/* PIN boxes */}
             <div>
               <label style={label}>4-Digit Security PIN</label>
-              <div style={{ display: 'flex', gap: 10, width: '100%', overflow: 'hidden' }} onPaste={handlePinPaste}>
+              <div role="group" aria-label="4-Digit Security PIN" style={{ display: 'flex', gap: 10, width: '100%', overflow: 'hidden' }} onPaste={handlePinPaste}>
                 {[0,1,2,3].map(i => (
                   <input
                     key={i}
@@ -178,6 +179,7 @@ export default function LoginPage() {
                     onChange={e => handlePinChange(i, e.target.value)}
                     onKeyDown={e => handlePinKey(i, e)}
                     autoComplete="new-password"
+                    aria-label={`PIN digit ${i + 1}`}
                     style={{
                       flex: '1 1 0%',
                       minWidth: 0,

@@ -56,7 +56,8 @@ export default function PricingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, ...editForm }),
       });
-      if (!res.ok) throw new Error('Failed to update plan');
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to update plan');
       await fetchPlans();
       setEditingId(null);
     } catch (err: any) {
@@ -76,7 +77,7 @@ export default function PricingPage() {
             <CreditCard color="var(--primary)" size={28} />
             Subscription Plans
           </h1>
-          <p style={{ margin: 0, color: 'var(--text-muted)' }}>Manage pricing tiers and limits dynamically. Changes apply instantly to all new checkouts.</p>
+          <p style={{ margin: 0, color: 'var(--text-muted)' }}>Prices apply to future invoices. Capacity changes are enforced across tenants and rejected when current usage would be invalid.</p>
         </div>
       </div>
 

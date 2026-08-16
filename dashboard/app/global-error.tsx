@@ -17,7 +17,7 @@ export default function GlobalError({
       <body>
         <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'sans-serif' }}>
           <h2>Something went wrong!</h2>
-          <p>We've been notified of the issue and are looking into it.</p>
+          <p>We&apos;ve been notified of the issue and are looking into it.</p>
         </div>
       </body>
     </html>
