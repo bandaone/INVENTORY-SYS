@@ -46,6 +46,21 @@ interface Location {
   is_active: boolean;
 }
 
+function ToggleSwitch({ enabled, onChange, id }: { enabled: boolean; onChange: (value: boolean) => void; id: string }) {
+  return (
+    <button
+      type="button"
+      id={id}
+      role="switch"
+      aria-checked={enabled}
+      onClick={() => onChange(!enabled)}
+      style={{ width: '44px', height: '24px', background: enabled ? 'var(--primary)' : 'var(--panel-border)', borderRadius: '12px', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.2s' }}
+    >
+      <span style={{ position: 'absolute', top: '2px', left: enabled ? '22px' : '2px', width: '20px', height: '20px', background: enabled ? '#0f1115' : 'var(--text-muted)', borderRadius: '50%', transition: 'left 0.2s' }} />
+    </button>
+  );
+}
+
 export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -202,12 +217,6 @@ export default function SettingsPage() {
 
   const inputStyle = { width: '100%', padding: '10px 14px', background: 'var(--bg-color)', border: '1px solid var(--panel-border)', color: 'var(--text-main)', borderRadius: '8px', fontFamily: 'inherit', fontSize: '14px' };
   const labelStyle = { display: 'block', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 500 } as const;
-
-  const ToggleSwitch = ({ enabled, onChange, id }: { enabled: boolean; onChange: (v: boolean) => void; id: string }) => (
-    <button id={id} onClick={() => onChange(!enabled)} style={{ width: '44px', height: '24px', background: enabled ? 'var(--primary)' : 'var(--panel-border)', borderRadius: '12px', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.2s' }}>
-      <div style={{ position: 'absolute', top: '2px', left: enabled ? '22px' : '2px', width: '20px', height: '20px', background: enabled ? '#0f1115' : 'var(--text-muted)', borderRadius: '50%', transition: 'left 0.2s' }} />
-    </button>
-  );
 
   if (loading) return (
     <div className="animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', gap: '8px', color: 'var(--text-muted)' }}>

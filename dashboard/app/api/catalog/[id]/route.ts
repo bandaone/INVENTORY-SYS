@@ -88,10 +88,8 @@ function pickRequiredFields(value: {
   ].filter(Boolean) as string[];
 }
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await requireTenantSession(['owner', 'store_manager', 'stock_clerk']);
     const tenantId = session.tenantId;

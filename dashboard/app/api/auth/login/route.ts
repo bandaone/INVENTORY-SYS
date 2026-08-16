@@ -43,7 +43,7 @@ async function startSupabaseSession(
   currentAuthUserId: string | null,
   linkIdentity: (userId: string) => Promise<void>,
 ) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const password = deriveSupabasePassword(email, pin)
   let result = await supabase.auth.signInWithPassword({ email, password })
 
@@ -127,7 +127,7 @@ export async function POST(req: Request) {
 
       await clearPlatformLoginFailures(admin.id)
 
-      setSessionDisplayCookies({
+      await setSessionDisplayCookies({
         type: 'platform', authUserId: authUser.id, staffId: admin.id, role: 'superadmin',
         tenantId: null, locationId: null, shiftId: null,
         authVersion: Number(admin.auth_version || 0),
@@ -250,7 +250,7 @@ export async function POST(req: Request) {
       RETURNING id, location_id
     `, [user.tenant_id, user.staff_id, user.location_id])
     if ((shiftResult.rows[0]?.location_id || null) !== (user.location_id || null)) {
-      await createClient().auth.signOut({ scope: 'local' }).catch(() => undefined)
+      await (await createClient()).auth.signOut({ scope: 'local' }).catch(() => undefined)
       return NextResponse.json({
         error: 'An open shift belongs to a previous store assignment. Close it before signing in.',
         code: 'OPEN_SHIFT_LOCATION_MISMATCH',
@@ -268,7 +268,7 @@ export async function POST(req: Request) {
       tenantId: user.tenant_id, locationId: user.location_id, shiftId,
       authVersion: Number(user.auth_version || 0),
     }
-    setSessionDisplayCookies(session, {
+    await setSessionDisplayCookies(session, {
       staffName: user.staff_name,
       tenantName: user.tenant_name,
       locationName: user.location_name,

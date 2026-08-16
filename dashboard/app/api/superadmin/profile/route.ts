@@ -83,7 +83,7 @@ export async function PUT(req: Request) {
       }
     );
 
-    cookies().set('staff_name', name.trim(), { path: '/', httpOnly: false });
+    (await cookies()).set('staff_name', name.trim(), { path: '/', httpOnly: false });
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

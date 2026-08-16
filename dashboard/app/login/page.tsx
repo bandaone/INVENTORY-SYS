@@ -1,8 +1,10 @@
 'use client';
 import { useState, useRef } from 'react';
 import { Lock, Hexagon } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const [email, setEmail]     = useState('');
@@ -44,7 +46,7 @@ export default function LoginPage() {
     try {
       const res  = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), pin: pinValue }) });
       const data = await res.json();
-      if (res.ok) { window.location.href = data.redirect || '/'; }
+      if (res.ok) { router.replace(data.redirect || '/'); }
       else        { setError(data.error || 'Invalid credentials'); setPin(['', '', '', '']); pinRefs[0].current?.focus(); }
     } catch { setError('Cannot reach server — please try again.'); }
     setLoading(false);

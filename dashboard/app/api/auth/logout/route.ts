@@ -154,11 +154,11 @@ export async function POST() {
     return NextResponse.json({ error: 'Logout failed' }, { status: 500 })
   } finally {
     try {
-      await createClient().auth.signOut({ scope: 'local' })
+      await (await createClient()).auth.signOut({ scope: 'local' })
     } catch {
       // Local cookies are still cleared below if Supabase is unavailable.
     }
-    clearSessionCookies()
+    await clearSessionCookies()
   }
 }
 

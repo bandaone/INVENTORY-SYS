@@ -39,8 +39,8 @@ export class SessionError extends Error {
 type TenantSessionOptions = { allowSuspended?: boolean }
 type SessionDisplay = { staffName: string; tenantName?: string | null; locationName?: string | null }
 
-export function setSessionDisplayCookies(session: AppSession, display: SessionDisplay) {
-  const store = cookies()
+export async function setSessionDisplayCookies(session: AppSession, display: SessionDisplay) {
+  const store = await cookies()
   const secure = process.env.NODE_ENV === 'production'
   const protectedOptions = { path: '/', httpOnly: true, secure, sameSite: 'lax' as const }
   const displayOptions = { ...protectedOptions, httpOnly: false }
@@ -63,7 +63,7 @@ export function setSessionDisplayCookies(session: AppSession, display: SessionDi
 }
 
 export async function getVerifiedSession(): Promise<AppSession | null> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) return null
 
@@ -142,8 +142,8 @@ export async function requirePlatformSession() {
   return session
 }
 
-export function clearSessionCookies() {
-  const store = cookies()
+export async function clearSessionCookies() {
+  const store = await cookies()
   const options = {
     path: '/', httpOnly: true, secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax' as const, maxAge: 0,

@@ -13,10 +13,11 @@ function escapeHtml(value: unknown) {
     '>': '&gt;',
     '"': '&quot;',
     "'": '&#039;',
-  })[character] || character)
+  })[character] || character);
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const { tenantId } = await requireTenantSession(['owner'], { allowSuspended: true })
     const paymentId = String(params.id || '')

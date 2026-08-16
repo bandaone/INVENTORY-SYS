@@ -5,11 +5,12 @@ import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
-export default async function InventoryPage({
-  searchParams,
-}: {
-  searchParams?: { q?: string };
-}) {
+export default async function InventoryPage(
+  props: {
+    searchParams?: Promise<{ q?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await getVerifiedSession();
   if (!session?.tenantId || session.role !== 'owner') {
     redirect('/login');

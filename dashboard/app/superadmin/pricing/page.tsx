@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CreditCard, Save, CheckCircle2, Edit3, X, AlertCircle } from 'lucide-react';
 
 interface Plan {
@@ -20,11 +20,7 @@ export default function PricingPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchPlans();
-  }, []);
-
-  const fetchPlans = async () => {
+  const fetchPlans = useCallback(async () => {
     try {
       const res = await fetch('/api/superadmin/plans');
       if (!res.ok) throw new Error('Failed to fetch plans');
@@ -35,7 +31,11 @@ export default function PricingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void fetchPlans();
+  }, [fetchPlans]);
 
   const startEditing = (plan: Plan) => {
     setEditingId(plan.id);

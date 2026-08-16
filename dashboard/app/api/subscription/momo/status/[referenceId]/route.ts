@@ -5,7 +5,8 @@ import { sendSubscriptionReceiptEmail } from '@/lib/email'
 import { requireTenantSession, SessionError } from '@/lib/session'
 import { NextResponse } from 'next/server'
 
-export async function GET(_req: Request, { params }: { params: { referenceId: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ referenceId: string }> }) {
+  const params = await props.params;
   try {
     const session = await requireTenantSession(['owner'], { allowSuspended: true })
     const referenceId = String(params.referenceId || '').trim()

@@ -137,7 +137,7 @@ export async function POST(req: Request) {
         CURRENT_TIMESTAMP + INTERVAL '7 days', $3)
     `, [tenantId, tier, JSON.stringify({ trial_days: 7, source: 'public_registration' })])
 
-    const supabase = createClient()
+    const supabase = await createClient()
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password: deriveSupabasePassword(email, pin),
@@ -151,7 +151,7 @@ export async function POST(req: Request) {
       type: 'tenant', authUserId: authData.user.id, staffId, role: 'owner',
       tenantId, locationId: location.id, shiftId: null, authVersion: 0,
     }
-    setSessionDisplayCookies(session, {
+    await setSessionDisplayCookies(session, {
       staffName: ownerName,
       tenantName: businessName,
       locationName: location.name,

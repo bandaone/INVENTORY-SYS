@@ -3,8 +3,10 @@ import { useEffect, useState } from 'react';
 import { Activity, MapPin, User, TrendingUp, Loader2, RefreshCw } from 'lucide-react';
 
 interface ActiveShift {
+  id?: string;
   shift_id: string;
   started_at: string;
+  ended_at?: string | null;
   staff_name: string;
   staff_role: string;
   location_name: string;
@@ -31,11 +33,12 @@ interface LocationSummary {
 export default function LiveActivity() {
   const [data, setData] = useState<{ activeShifts: ActiveShift[]; recentSales: RecentSale[]; locationSummary: LocationSummary[] } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshedAt, setRefreshedAt] = useState(0);
 
   const load = () => {
     fetch('/api/live-activity')
       .then(r => r.json())
-      .then(d => { setData(d); setLoading(false); })
+      .then(d => { setData(d); setRefreshedAt(Date.now()); setLoading(false); })
       .catch(() => setLoading(false));
   };
 
@@ -50,7 +53,7 @@ export default function LiveActivity() {
   const SALES_PREVIEW = 5;
 
   const timeSince = (ts: string) => {
-    const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    const diff = Math.max(0, Math.floor((refreshedAt - new Date(ts).getTime()) / 1000));
     if (diff < 60)   return `${diff}s ago`;
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     return `${Math.floor(diff / 3600)}h ago`;
@@ -91,7 +94,7 @@ export default function LiveActivity() {
             <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No staff activity recorded today.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {data.activeShifts.map((s: any) => {
+              {data.activeShifts.map((s) => {
                 const isOnline = !s.ended_at;
                 return (
                 <div key={s.shift_id || s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', background: 'var(--hover-bg)', borderRadius: '8px', opacity: isOnline ? 1 : 0.7 }}>

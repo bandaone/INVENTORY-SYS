@@ -8,8 +8,8 @@ import { requireTenantSession } from '@/lib/session';
 export const dynamic = 'force-dynamic';
 
 export default async function TenantLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = cookies();
-  const pathname = headers().get('x-retail-pathname') || '';
+  const cookieStore = await cookies();
+  const pathname = (await headers()).get('x-retail-pathname') || '';
   const session = await requireTenantSession(undefined, { allowSuspended: true }).catch(() => null);
   const tenantId = session?.tenantId;
   const staffRole = session?.role || '';
