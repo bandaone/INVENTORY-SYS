@@ -57,6 +57,64 @@ where staff.id = shift.staff_id
   and foreign_location.id = shift.location_id
   and foreign_location.tenant_id <> shift.tenant_id;
 
+-- Closing reports are historical snapshots of their shift. Some legacy reports
+-- retained the old cross-tenant location even though their shift/cashier links
+-- are valid. Repair them from the now-corrected shift and preserve an audit
+-- record before validating the composite tenant foreign key.
+insert into public.audit_trail (
+  tenant_id, action_type, actor_role, resource_type, resource_id, changes, metadata
+)
+select
+  report.tenant_id,
+  'SYSTEM_DATA_REPAIR',
+  'system',
+  'shift_closing_report',
+  report.id::text,
+  jsonb_build_object(
+    'location_id', jsonb_build_object('before', report.location_id, 'after', shift.location_id)
+  ),
+  jsonb_build_object(
+    'repair_key', 'shift_report_location_same_tenant_20260816',
+    'reason', 'Closing report location did not belong to its shift tenant'
+  )
+from public.shift_closing_reports as report
+join public.shifts as shift
+  on shift.id = report.shift_id
+ and shift.tenant_id = report.tenant_id
+join public.locations as shift_location
+  on shift_location.id = shift.location_id
+ and shift_location.tenant_id = report.tenant_id
+left join public.locations as report_location
+  on report_location.id = report.location_id
+ and report_location.tenant_id = report.tenant_id
+where report_location.id is null
+  and not exists (
+    select 1 from public.audit_trail as existing
+    where existing.tenant_id = report.tenant_id
+      and existing.resource_type = 'shift_closing_report'
+      and existing.resource_id = report.id::text
+      and existing.metadata ->> 'repair_key' = 'shift_report_location_same_tenant_20260816'
+  );
+
+update public.shift_closing_reports as report
+set location_id = shift.location_id,
+    summary = coalesce(report.summary, '{}'::jsonb) || jsonb_build_object(
+      'location_repaired_at', now(),
+      'location_repair', 'linked_shift'
+    )
+from public.shifts as shift
+join public.locations as shift_location
+  on shift_location.id = shift.location_id
+ and shift_location.tenant_id = shift.tenant_id
+where shift.id = report.shift_id
+  and shift.tenant_id = report.tenant_id
+  and not exists (
+    select 1
+    from public.locations as report_location
+    where report_location.id = report.location_id
+      and report_location.tenant_id = report.tenant_id
+  );
+
 -- Close abandoned or superseded shifts. A staff member may retain one recent
 -- open shift; every older open shift receives a proper closing report.
 create temporary table shift_closure_plan on commit drop as
