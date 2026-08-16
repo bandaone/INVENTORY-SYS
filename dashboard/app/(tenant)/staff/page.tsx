@@ -77,7 +77,7 @@ export default function StaffPage() {
     if (form.pin && !/^\d{4}$/.test(form.pin)) {
       setError('PIN must be exactly 4 digits'); return;
     }
-    if (form.role !== 'owner' && !form.location_id) {
+    if (!form.location_id) {
       setError('Choose the store location this staff member works at'); return;
     }
 
@@ -270,7 +270,7 @@ export default function StaffPage() {
               {/* Location */}
               <div>
                 <label style={labelStyle}>
-                  Store Location {form.role !== 'owner' ? '*' : '(optional)'}
+                  Store Location *
                 </label>
                 <select
                   style={inputStyle}
@@ -279,7 +279,7 @@ export default function StaffPage() {
                   onChange={e => setForm(f => ({ ...f, location_id: e.target.value }))}
                 >
                   <option value="">
-                    {locations.length === 0 ? '— Create a location first —' : '— No specific location —'}
+                    {locations.length === 0 ? '— Create a location first —' : '— Choose a store —'}
                   </option>
                   {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>

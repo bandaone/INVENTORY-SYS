@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server';
 const ADMIN_ROLES = ['owner', 'store_manager'] as const;
 
 async function assertLocation(tenantId: string, locationId?: string | null) {
-  if (!locationId) return;
+  if (!locationId) throw new SessionError('A store location is required for every user', 400);
   const locations = await fetchTenantQuery(tenantId, 'SELECT id FROM locations WHERE id = $1 AND tenant_id = $2 AND is_active = true', [locationId, tenantId]);
   if (!locations.length) throw new SessionError('Location does not belong to this tenant', 400);
 }
@@ -48,8 +48,8 @@ export async function POST(req: Request) {
     if (!validPin(pin)) return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 });
     if (!['owner','store_manager','cashier','stock_clerk'].includes(role))
       return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
-    if (role !== 'owner' && !location_id) {
-      return NextResponse.json({ error: 'This role must be assigned to a store location' }, { status: 400 });
+    if (!location_id) {
+      return NextResponse.json({ error: 'Every user must be assigned to a store location' }, { status: 400 });
     }
 
     const normalizedEmail = email?.trim()?.toLocaleLowerCase() || null;
@@ -116,8 +116,8 @@ export async function PATCH(req: Request) {
     const nextEmail = email === undefined
       ? String(existingRows[0].email).toLocaleLowerCase()
       : String(email).trim().toLocaleLowerCase();
-    if (nextRole !== 'owner' && !nextLocationId) {
-      return NextResponse.json({ error: 'This role must be assigned to a store location' }, { status: 400 });
+    if (!nextLocationId) {
+      return NextResponse.json({ error: 'Every user must be assigned to a store location' }, { status: 400 });
     }
     const assignmentChanges = nextLocationId !== existingRows[0].location_id;
     const deactivating = is_active === false && existingRows[0].is_active;

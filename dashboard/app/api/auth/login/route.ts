@@ -194,7 +194,7 @@ export async function POST(req: Request) {
     if (tenantRestricted && user.role !== 'owner') {
       return NextResponse.json({ error: 'This store account is suspended. Contact support.' }, { status: 403 })
     }
-    if (user.role !== 'owner' && !user.location_id) {
+    if (!user.location_id) {
       return NextResponse.json({
         error: 'Your account has no store assigned. Contact your manager to assign you to a branch.',
       }, { status: 403 })
