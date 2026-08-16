@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { UserPlus, Edit2, UserX, UserCheck, X, Loader2, Eye, EyeOff } from 'lucide-react';
 
 interface StaffMember {
@@ -52,6 +53,23 @@ export default function StaffPage() {
   };
 
   useEffect(() => { fetchStaff(); }, []);
+
+  useEffect(() => {
+    if (!showModal) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !saving) setShowModal(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showModal, saving]);
 
   const flash = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(''), 4000); };
 
@@ -217,27 +235,69 @@ export default function StaffPage() {
         )}
       </div>
 
-      {/* ── Modal ── */}
-      {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="glass-panel" style={{ width: '100%', maxWidth: '500px', padding: '32px', maxHeight: '90vh', overflowY: 'auto' }}>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px' }}>{editTarget ? `Edit — ${editTarget.name}` : 'Add New Staff Member'}</h3>
-              <button onClick={() => setShowModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px' }}><X size={20} /></button>
-            </div>
-
-            {error && (
-              <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: '8px', marginBottom: '18px', fontSize: '13px' }}>
-                {error}
+      {/* Render outside the animated page tree so fixed positioning is viewport-relative. */}
+      {showModal && typeof document !== 'undefined' && createPortal(
+        <div
+          role="presentation"
+          onMouseDown={() => !saving && setShowModal(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            display: 'grid', placeItems: 'center',
+            width: '100vw', height: '100dvh', padding: '16px',
+            overflowY: 'auto', overscrollBehavior: 'contain',
+            background: 'rgba(2, 6, 12, 0.76)', backdropFilter: 'blur(6px)',
+          }}
+        >
+          <section
+            className="glass-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="staff-dialog-title"
+            onMouseDown={event => event.stopPropagation()}
+            style={{
+              width: 'min(520px, 100%)',
+              maxHeight: 'calc(100dvh - 32px)',
+              margin: 'auto', padding: 0,
+              display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              transform: 'none',
+              background: 'var(--bg-color)',
+              border: '1px solid var(--panel-border)',
+              boxShadow: '0 28px 90px rgba(0, 0, 0, 0.48)',
+            }}
+          >
+            <header style={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '20px', padding: '22px 24px 18px', borderBottom: '1px solid var(--panel-border)' }}>
+              <div>
+                <h3 id="staff-dialog-title" style={{ margin: 0, fontSize: '18px' }}>
+                  {editTarget ? `Edit — ${editTarget.name}` : 'Add New Staff Member'}
+                </h3>
+                <p style={{ marginTop: '5px', color: 'var(--text-muted)', fontSize: '13px', lineHeight: 1.45 }}>
+                  Assign one role and one store. Access is enforced from this membership.
+                </p>
               </div>
-            )}
+              <button
+                type="button"
+                aria-label="Close staff form"
+                onClick={() => !saving && setShowModal(false)}
+                disabled={saving}
+                style={{ flexShrink: 0, display: 'grid', placeItems: 'center', width: '34px', height: '34px', background: 'var(--hover-bg)', border: '1px solid var(--panel-border)', borderRadius: '8px', color: 'var(--text-muted)', cursor: saving ? 'not-allowed' : 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </header>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', padding: '20px 24px' }}>
+              {error && (
+                <div role="alert" style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: '8px', marginBottom: '18px', fontSize: '13px' }}>
+                  {error}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {/* Name */}
               <div>
-                <label style={labelStyle}>Full Name *</label>
+                <label htmlFor="staff-name" style={labelStyle}>Full Name *</label>
                 <input
+                  id="staff-name"
                   style={inputStyle} value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="e.g. Jane Mwansa"
@@ -247,8 +307,9 @@ export default function StaffPage() {
 
               {/* Email */}
               <div>
-                <label style={labelStyle}>Email Address *</label>
+                <label htmlFor="staff-email" style={labelStyle}>Email Address *</label>
                 <input
+                  id="staff-email"
                   style={inputStyle} type="email" value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                   placeholder="jane@yourstore.com (used for login)"
@@ -258,8 +319,8 @@ export default function StaffPage() {
 
               {/* Role */}
               <div>
-                <label style={labelStyle}>Role *</label>
-                <select style={inputStyle} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                <label htmlFor="staff-role" style={labelStyle}>Role *</label>
+                <select id="staff-role" style={inputStyle} value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
                   <option value="cashier">Cashier — POS access only</option>
                   <option value="stock_clerk">Stock Clerk — Stocktake access only</option>
                   <option value="store_manager">Store Manager — Dashboard + reports</option>
@@ -269,10 +330,11 @@ export default function StaffPage() {
 
               {/* Location */}
               <div>
-                <label style={labelStyle}>
+                <label htmlFor="staff-location" style={labelStyle}>
                   Store Location *
                 </label>
                 <select
+                  id="staff-location"
                   style={inputStyle}
                   value={form.location_id}
                   disabled={locations.length === 0}
@@ -292,11 +354,12 @@ export default function StaffPage() {
 
               {/* PIN with show/hide */}
               <div>
-                <label style={labelStyle}>
+                <label htmlFor="staff-pin" style={labelStyle}>
                   {editTarget ? 'New PIN (leave blank to keep current)' : '4-Digit PIN *'}
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
+                    id="staff-pin"
                     style={{ ...inputStyle, paddingRight: '44px', letterSpacing: showPin ? '0.15em' : '0.35em', fontWeight: 700, fontSize: '18px' }}
                     type={showPin ? 'text' : 'password'}
                     inputMode="numeric"
@@ -321,20 +384,22 @@ export default function StaffPage() {
                   Cashiers use their PIN to log in to the POS. All staff use email + PIN to access the dashboard.
                 </p>
               </div>
+              </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-              <button onClick={handleSave} disabled={saving}
-                style={{ flex: 1, padding: '12px', background: 'var(--primary)', color: '#0f1115', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontFamily: 'Outfit' }}>
+            <footer style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '10px', padding: '18px 24px 22px', borderTop: '1px solid var(--panel-border)', background: 'var(--bg-color)' }}>
+              <button type="button" onClick={handleSave} disabled={saving}
+                style={{ minWidth: 0, padding: '12px', background: 'var(--primary)', color: '#0f1115', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontFamily: 'Outfit' }}>
                 {saving ? <><Loader2 size={15} className="spin" /> Saving...</> : (editTarget ? 'Save Changes' : 'Create Staff Member')}
               </button>
-              <button onClick={() => setShowModal(false)}
+              <button type="button" onClick={() => setShowModal(false)} disabled={saving}
                 style={{ padding: '12px 20px', background: 'transparent', border: '1px solid var(--panel-border)', color: 'var(--text-main)', borderRadius: '8px', cursor: 'pointer', fontFamily: 'Outfit', fontWeight: 500 }}>
                 Cancel
               </button>
-            </div>
-          </div>
-        </div>
+            </footer>
+          </section>
+        </div>,
+        document.body,
       )}
     </div>
   );
