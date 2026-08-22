@@ -1,8 +1,11 @@
 'use client';
 import { useState, useRef } from 'react';
 import { Lock, Hexagon } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { clearPosTerminalSession, storePosTerminalSession } from '@/lib/pos-constants';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const [email, setEmail]     = useState('');
@@ -44,7 +47,11 @@ export default function LoginPage() {
     try {
       const res  = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), pin: pinValue }) });
       const data = await res.json();
-      if (res.ok) { window.location.href = data.redirect || '/'; }
+      if (res.ok) {
+        if (data.terminalToken) storePosTerminalSession(data.terminalToken);
+        else clearPosTerminalSession();
+        router.replace(data.redirect || '/');
+      }
       else        { setError(data.error || 'Invalid credentials'); setPin(['', '', '', '']); pinRefs[0].current?.focus(); }
     } catch { setError('Cannot reach server — please try again.'); }
     setLoading(false);
@@ -149,8 +156,9 @@ export default function LoginPage() {
 
             {/* Email */}
             <div>
-              <label style={label}>Email Address</label>
+              <label htmlFor="login-email" style={label}>Email Address</label>
               <input
+                id="login-email"
                 style={textInput}
                 type="email"
                 autoComplete="username"
@@ -166,7 +174,7 @@ export default function LoginPage() {
             {/* PIN boxes */}
             <div>
               <label style={label}>4-Digit Security PIN</label>
-              <div style={{ display: 'flex', gap: 10, width: '100%', overflow: 'hidden' }} onPaste={handlePinPaste}>
+              <div role="group" aria-label="4-Digit Security PIN" style={{ display: 'flex', gap: 10, width: '100%', overflow: 'hidden' }} onPaste={handlePinPaste}>
                 {[0,1,2,3].map(i => (
                   <input
                     key={i}
@@ -178,6 +186,7 @@ export default function LoginPage() {
                     onChange={e => handlePinChange(i, e.target.value)}
                     onKeyDown={e => handlePinKey(i, e)}
                     autoComplete="new-password"
+                    aria-label={`PIN digit ${i + 1}`}
                     style={{
                       flex: '1 1 0%',
                       minWidth: 0,

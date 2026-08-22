@@ -41,6 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_locations_active ON locations(tenant_id, is_activ
 
 CREATE TABLE IF NOT EXISTS staff (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  auth_user_id UUID,
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   email VARCHAR(255),
   name VARCHAR(255) NOT NULL,
@@ -62,9 +63,11 @@ DROP POLICY IF EXISTS tenant_isolation ON staff;
 CREATE POLICY tenant_isolation ON staff
   USING (tenant_id = current_setting('app.current_tenant')::UUID);
 CREATE INDEX IF NOT EXISTS idx_staff_tenant ON staff(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_staff_auth_user_id ON staff(auth_user_id) WHERE auth_user_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS platform_admins (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  auth_user_id UUID,
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   pin_hash VARCHAR(255) NOT NULL,
@@ -76,6 +79,7 @@ CREATE TABLE IF NOT EXISTS platform_admins (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_platform_admins_email ON platform_admins(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_admins_auth_user_id ON platform_admins(auth_user_id) WHERE auth_user_id IS NOT NULL;
 
 -- Platform administrators must be provisioned through a one-time secure
 -- bootstrap process. Never seed a repository-known email or PIN here.

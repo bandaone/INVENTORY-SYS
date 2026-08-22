@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { adminPool } from '@/lib/db'
 import { clearSessionCookies, getVerifiedSession } from '@/lib/session'
+import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function POST() {
@@ -152,6 +153,15 @@ export async function POST() {
     console.error('[Logout Error]', error)
     return NextResponse.json({ error: 'Logout failed' }, { status: 500 })
   } finally {
-    clearSessionCookies()
+    try {
+      await (await createClient()).auth.signOut({ scope: 'local' })
+    } catch {
+      // Local cookies are still cleared below if Supabase is unavailable.
+    }
+    await clearSessionCookies()
   }
+}
+
+export async function DELETE() {
+  return POST()
 }

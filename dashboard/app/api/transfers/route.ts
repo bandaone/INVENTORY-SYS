@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import type { PoolClient } from 'pg';
 import crypto from 'crypto';
 import { requireTenantSession, SessionError } from '@/lib/session';
+import { EntitlementError, requireEntitlement } from '@/lib/billing';
 
 const TRANSFER_ROLES = ['owner', 'store_manager', 'stock_clerk'] as const;
 
@@ -20,6 +21,7 @@ export async function GET(req: Request) {
   try {
     const session = await requireTenantSession(TRANSFER_ROLES);
     const tenantId = session.tenantId;
+    await requireEntitlement(tenantId, 'transfers');
     const { searchParams } = new URL(req.url);
     const kind = searchParams.get('kind') || 'source';
     const locationId = searchParams.get('location_id');
@@ -108,6 +110,9 @@ export async function GET(req: Request) {
     if (error instanceof SessionError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
+    if (error instanceof EntitlementError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('[Transfers GET Error]', error);
     return NextResponse.json({ error: 'Failed to load transfer stock' }, { status: 500 });
   }
@@ -120,6 +125,7 @@ export async function POST(req: Request) {
   try {
     const session = await requireTenantSession(TRANSFER_ROLES);
     const tenantId = session.tenantId;
+    await requireEntitlement(tenantId, 'transfers');
     const staffId = session.staffId;
     const staffRole = session.role;
     const { from_location_id, to_location_id, serials } = await req.json();
@@ -253,6 +259,9 @@ export async function POST(req: Request) {
       await client.query('ROLLBACK');
     }
     if (error instanceof SessionError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (error instanceof EntitlementError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     console.error('[Transfers POST Error]', error);

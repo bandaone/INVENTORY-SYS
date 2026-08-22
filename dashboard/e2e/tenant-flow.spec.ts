@@ -13,21 +13,32 @@ function uniqueTenant(prefix: string) {
 
 async function registerTenant(page: Page, tenant: ReturnType<typeof uniqueTenant>) {
   await page.goto('/register');
-  await page.getByLabel('Business Name').fill(tenant.businessName);
-  await page.getByLabel('Owner Full Name').fill(tenant.ownerName);
-  await page.getByLabel('Phone Number (for SMS PIN)').fill(tenant.phone);
-  await page.getByLabel('Email Address').fill(tenant.email);
-  await page.getByLabel('Physical Store Address').fill(tenant.address);
-  await page.getByLabel('Select Plan (Free 7-day Trial)').selectOption('boutique_starter');
-  await page.getByRole('button', { name: /start 7-day free trial/i }).click();
+  await page.getByLabel('Business or trading name').fill(tenant.businessName);
+  await page.getByLabel('Account owner').fill(tenant.ownerName);
+  await page.getByRole('button', { name: 'Continue' }).click();
 
-  await expect(page.getByText('Store Created!')).toBeVisible();
+  await page.getByLabel('Business phone').fill(tenant.phone);
+  await page.getByLabel('Physical address').fill(tenant.address);
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await page.getByRole('radio', { name: /Boutique Starter/ }).check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+
+  await page.getByLabel('Owner email').fill(tenant.email);
+  await page.getByLabel('4-digit security PIN').fill('1234');
+  await page.getByLabel('Confirm PIN').fill('1234');
+  await page.getByRole('button', { name: /start 7-day trial/i }).click();
+
+  await expect(page.getByText('Workspace created securely')).toBeVisible();
 }
 
 async function loginTenant(page: Page, email: string) {
   await page.goto('/login');
   await page.getByLabel('Email Address').fill(email);
-  await page.getByLabel('4-Digit PIN').fill('1234');
+  const digits = ['1', '2', '3', '4'];
+  for (let index = 0; index < digits.length; index += 1) {
+    await page.getByLabel(`PIN digit ${index + 1}`).fill(digits[index]);
+  }
   await page.getByRole('button', { name: /secure login/i }).click();
 
   await expect(page).toHaveURL(/\/$/);

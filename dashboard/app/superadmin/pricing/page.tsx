@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CreditCard, Save, CheckCircle2, Edit3, X, AlertCircle } from 'lucide-react';
 
 interface Plan {
@@ -20,11 +20,7 @@ export default function PricingPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchPlans();
-  }, []);
-
-  const fetchPlans = async () => {
+  const fetchPlans = useCallback(async () => {
     try {
       const res = await fetch('/api/superadmin/plans');
       if (!res.ok) throw new Error('Failed to fetch plans');
@@ -35,7 +31,11 @@ export default function PricingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void fetchPlans();
+  }, [fetchPlans]);
 
   const startEditing = (plan: Plan) => {
     setEditingId(plan.id);
@@ -56,7 +56,8 @@ export default function PricingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, ...editForm }),
       });
-      if (!res.ok) throw new Error('Failed to update plan');
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to update plan');
       await fetchPlans();
       setEditingId(null);
     } catch (err: any) {
@@ -76,7 +77,7 @@ export default function PricingPage() {
             <CreditCard color="var(--primary)" size={28} />
             Subscription Plans
           </h1>
-          <p style={{ margin: 0, color: 'var(--text-muted)' }}>Manage pricing tiers and limits dynamically. Changes apply instantly to all new checkouts.</p>
+          <p style={{ margin: 0, color: 'var(--text-muted)' }}>Prices apply to future invoices. Capacity changes are enforced across tenants and rejected when current usage would be invalid.</p>
         </div>
       </div>
 

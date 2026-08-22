@@ -88,12 +88,11 @@ function pickRequiredFields(value: {
   ].filter(Boolean) as string[];
 }
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const { tenantId } = await requireTenantSession(['owner', 'store_manager', 'stock_clerk']);
+    const session = await requireTenantSession(['owner', 'store_manager', 'stock_clerk']);
+    const tenantId = session.tenantId;
 
     const { id } = params;
     if (!id) {
@@ -152,6 +151,16 @@ export async function PATCH(
     }
     if (!Number.isFinite(nextRetailPrice) || nextRetailPrice < 0) {
       return NextResponse.json({ error: 'Retail price must be a valid number' }, { status: 400 });
+    }
+    if (!Number.isFinite(nextCostPrice) || nextCostPrice < 0) {
+      return NextResponse.json({ error: 'Cost price must be a valid number' }, { status: 400 });
+    }
+    if (session.role === 'stock_clerk' && (
+      nextRetailPrice !== Number(existing.retail_price)
+      || nextCostPrice !== Number(existing.cost_price)
+      || nextDiscountPercent !== Number(existing.discount_percent || 0)
+    )) {
+      return NextResponse.json({ error: 'Only owners and store managers can change product pricing' }, { status: 403 });
     }
 
     const metadata = {

@@ -33,6 +33,7 @@ type SummaryRow = {
 type OnboardingRow = {
   total_sessions: string | number;
   completed_sessions: string | number;
+  converted_sessions: string | number;
   business_profile_completed: string | number;
   location_created: string | number;
   staff_created: string | number;
@@ -57,28 +58,20 @@ export default async function SuperAdminOverview() {
     fetchQuery(`
       SELECT
         COUNT(*)::int AS total_tenants,
-        COUNT(*) FILTER (WHERE safe_status = 'ACTIVE')::int AS active_tenants,
-        COUNT(*) FILTER (WHERE safe_status = 'TRIAL')::int AS trial_tenants,
-        COUNT(*) FILTER (WHERE safe_status = 'SUSPENDED')::int AS suspended_tenants,
-        COUNT(*) FILTER (WHERE safe_status IN ('CHURNED', 'CANCELLED'))::int AS churned_tenants,
-        COALESCE(SUM(CASE WHEN safe_status = 'ACTIVE' THEN plan_rate ELSE 0 END), 0) AS mrr,
-        COALESCE(SUM(CASE WHEN safe_status = 'ACTIVE' THEN plan_rate ELSE 0 END) * 12, 0) AS arr
-      FROM (
-        SELECT
-          COALESCE(UPPER(status), 'ACTIVE') AS safe_status,
-          CASE subscription_tier
-            WHEN 'boutique_starter' THEN 1200
-            WHEN 'growth' THEN 3500
-            WHEN 'enterprise_fleet' THEN 9500
-            ELSE 0
-          END AS plan_rate
-        FROM tenants
-      ) tenant_plans
+        COUNT(*) FILTER (WHERE UPPER(tenant.status) = 'ACTIVE')::int AS active_tenants,
+        COUNT(*) FILTER (WHERE UPPER(tenant.status) = 'TRIAL')::int AS trial_tenants,
+        COUNT(*) FILTER (WHERE UPPER(tenant.status) = 'SUSPENDED')::int AS suspended_tenants,
+        COUNT(*) FILTER (WHERE UPPER(tenant.status) IN ('CHURNED', 'CANCELLED'))::int AS churned_tenants,
+        COALESCE(SUM(plan.price_zmw) FILTER (WHERE UPPER(tenant.status) = 'ACTIVE'), 0) AS mrr,
+        COALESCE(SUM(plan.price_zmw) FILTER (WHERE UPPER(tenant.status) = 'ACTIVE'), 0) * 12 AS arr
+      FROM tenants AS tenant
+      JOIN subscription_plans AS plan ON plan.id = tenant.subscription_plan_id
     `),
     fetchQuery(`
       SELECT
         COUNT(*)::int AS total_sessions,
-        COUNT(*) FILTER (WHERE converted_to_paid)::int AS completed_sessions,
+        COUNT(*) FILTER (WHERE go_live_approved)::int AS completed_sessions,
+        COUNT(*) FILTER (WHERE converted_to_paid)::int AS converted_sessions,
         COUNT(*) FILTER (WHERE business_profile_completed)::int AS business_profile_completed,
         COUNT(*) FILTER (WHERE location_created)::int AS location_created,
         COUNT(*) FILTER (WHERE staff_created)::int AS staff_created,
@@ -90,8 +83,11 @@ export default async function SuperAdminOverview() {
     `),
     fetchQuery(`
       SELECT
-        COUNT(*) FILTER (WHERE status = 'OVERDUE')::int AS overdue_count,
-        COALESCE(SUM(CASE WHEN event_type = 'PAYMENT_RECEIVED' THEN amount ELSE 0 END), 0) AS collected_amount,
+        (SELECT COUNT(*)::int FROM subscription_invoices
+          WHERE status = 'OVERDUE' OR (status IN ('OPEN','PARTIALLY_PAID') AND due_at < NOW())) AS overdue_count,
+        (SELECT COALESCE(SUM(total_amount - amount_paid), 0) FROM subscription_invoices
+          WHERE status = 'OVERDUE' OR (status IN ('OPEN','PARTIALLY_PAID') AND due_at < NOW())) AS overdue_amount,
+        (SELECT COALESCE(SUM(amount), 0) FROM subscription_payments WHERE status = 'SUCCEEDED') AS collected_amount,
         COUNT(*) FILTER (WHERE event_type = 'TRIAL_STARTED')::int AS trials_started,
         COUNT(*) FILTER (WHERE event_type = 'TRIAL_CONVERTED')::int AS conversions,
         COUNT(*) FILTER (WHERE event_type = 'UPGRADED')::int AS upgrades,
@@ -100,8 +96,8 @@ export default async function SuperAdminOverview() {
     `),
     fetchQuery(`
       SELECT
-        COALESCE(api_uptime_pct, 0) AS api_uptime_pct,
-        COALESCE(error_rate_pct, 0) AS error_rate_pct,
+        api_uptime_pct,
+        error_rate_pct,
         COALESCE(sync_backlog, 0) AS sync_backlog,
         COALESCE(failed_jobs, 0) AS failed_jobs,
         COALESCE(webhook_failures, 0) AS webhook_failures,
@@ -119,7 +115,7 @@ export default async function SuperAdminOverview() {
     `),
     fetchQuery(`
       SELECT
-        COALESCE(UPPER(status), 'ACTIVE') AS safe_status,
+        COALESCE(UPPER(status), 'UNKNOWN') AS safe_status,
         COUNT(*)::int AS tenant_count
       FROM tenants
       GROUP BY safe_status
@@ -192,12 +188,12 @@ export default async function SuperAdminOverview() {
   const zraCompliance = complianceRows[0] ?? { zra_ready: 0, configured_not_activated: 0, missing_zra: 0 };
   const zraSyncQueue = zraSyncRows[0] ?? { zra_pending_syncs: 0, zra_failed_syncs: 0, tenants_affected: 0 };
   const derivedHealth = {
-    api_uptime_pct: health?.api_uptime_pct ?? 99.99,
-    error_rate_pct: health?.error_rate_pct ?? 0,
+    api_uptime_pct: health?.api_uptime_pct ?? null,
+    error_rate_pct: health?.error_rate_pct ?? null,
     sync_backlog: health?.sync_backlog ?? 0,
     failed_jobs: health?.failed_jobs ?? 0,
     webhook_failures: health?.webhook_failures ?? 0,
-    database_health: health?.database_health ?? 'HEALTHY',
+    database_health: health?.database_health ?? 'UNKNOWN',
     captured_at: health?.captured_at ?? null,
   };
 
@@ -206,6 +202,9 @@ export default async function SuperAdminOverview() {
   );
 
   const onboardingRatio = Number(onboarding.total_sessions || 0)
+    ? (Number(onboarding.converted_sessions || 0) / Number(onboarding.total_sessions || 0)) * 100
+    : 0;
+  const onboardingCompletionRatio = Number(onboarding.total_sessions || 0)
     ? (Number(onboarding.completed_sessions || 0) / Number(onboarding.total_sessions || 0)) * 100
     : 0;
 
@@ -231,7 +230,7 @@ export default async function SuperAdminOverview() {
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '18px' }}>
         <OwnerMetricCard label="MRR" value={formatMoney(summary.mrr)} note="Live recurring revenue from active tenants" tone="primary" />
         <OwnerMetricCard label="ARR" value={formatMoney(summary.arr)} note="Annualized recurring revenue" tone="secondary" />
-        <OwnerMetricCard label="Trial-to-paid" value={formatPercent(onboardingRatio)} note={`${formatCount(onboarding.completed_sessions)} of ${formatCount(onboarding.total_sessions)} converted`} tone="primary" />
+        <OwnerMetricCard label="Trial-to-paid" value={formatPercent(onboardingRatio)} note={`${formatCount(onboarding.converted_sessions)} of ${formatCount(onboarding.total_sessions)} converted`} tone="primary" />
         <OwnerMetricCard label="Overdue payments" value={formatCount(billing.overdue_count || 0)} note={formatMoney(billing.overdue_amount || 0)} tone="warning" />
       </section>
 
@@ -252,14 +251,14 @@ export default async function SuperAdminOverview() {
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '18px' }}>
         <OwnerMetricCard
           label="API uptime"
-          value={formatPercent(derivedHealth.api_uptime_pct, 2)}
-          note={health ? `Errors ${formatPercent(derivedHealth.error_rate_pct, 2)} · ${formatDateTime(derivedHealth.captured_at)}` : 'Derived from live activity'}
-          tone="primary"
+          value={derivedHealth.api_uptime_pct == null ? 'Not measured' : formatPercent(derivedHealth.api_uptime_pct, 2)}
+          note={derivedHealth.api_uptime_pct == null ? 'Connect an external availability monitor' : `Errors ${formatPercent(derivedHealth.error_rate_pct, 2)} · ${formatDateTime(derivedHealth.captured_at)}`}
+          tone={derivedHealth.api_uptime_pct == null ? 'muted' : 'primary'}
         />
         <OwnerMetricCard
           label="Sync backlog"
           value={formatCount(derivedHealth.sync_backlog)}
-          note={health ? `${formatCount(derivedHealth.failed_jobs)} failed jobs · ${formatCount(derivedHealth.webhook_failures)} webhook failures` : 'Derived from live activity'}
+          note={health ? `${formatCount(derivedHealth.failed_jobs)} failed jobs · ${formatCount(derivedHealth.webhook_failures)} webhook failures` : 'Awaiting first metrics rollup'}
           tone={Number(derivedHealth.sync_backlog || 0) > 0 ? 'warning' : 'primary'}
         />
         <OwnerMetricCard
@@ -295,7 +294,7 @@ export default async function SuperAdminOverview() {
           {[
             ['Revenue', formatMoney(summary.mrr), 'Recurring revenue from active tenants'],
             ['Trial conversion', formatPercent(onboardingRatio), 'Progress toward paying customers'],
-            ['Onboarding completion', formatPercent(onboardingRatio), 'Sessions that reached paid status'],
+            ['Onboarding completion', formatPercent(onboardingCompletionRatio), 'Sessions approved to go live'],
             ['Health risk', formatCount(Number(health?.sync_backlog || 0)), 'Pending sync work to clear'],
           ].map(([signal, count, comment]) => (
             <tr key={signal as string} style={{ borderBottom: '1px solid var(--panel-border)' }}>
@@ -364,15 +363,15 @@ export default async function SuperAdminOverview() {
           {health ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '14px' }}>
               <OwnerStatPill label="Database" value={String(derivedHealth.database_health || 'UNKNOWN')} tone={String(derivedHealth.database_health || '').toUpperCase() === 'HEALTHY' ? 'primary' : 'warning'} />
-              <OwnerStatPill label="API uptime" value={formatPercent(derivedHealth.api_uptime_pct, 2)} tone="primary" />
-              <OwnerStatPill label="Error rate" value={formatPercent(derivedHealth.error_rate_pct, 2)} tone={Number(derivedHealth.error_rate_pct || 0) > 1 ? 'warning' : 'secondary'} />
+              <OwnerStatPill label="API uptime" value={derivedHealth.api_uptime_pct == null ? 'Not measured' : formatPercent(derivedHealth.api_uptime_pct, 2)} tone={derivedHealth.api_uptime_pct == null ? 'muted' : 'primary'} />
+              <OwnerStatPill label="Error rate" value={derivedHealth.error_rate_pct == null ? 'Not measured' : formatPercent(derivedHealth.error_rate_pct, 2)} tone={derivedHealth.error_rate_pct == null ? 'muted' : Number(derivedHealth.error_rate_pct) > 1 ? 'warning' : 'secondary'} />
               <OwnerStatPill label="Backlog" value={formatCount(derivedHealth.sync_backlog)} tone={Number(derivedHealth.sync_backlog || 0) > 0 ? 'warning' : 'primary'} />
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '14px' }}>
-              <OwnerStatPill label="Database" value={String(derivedHealth.database_health || 'HEALTHY')} tone="primary" />
-              <OwnerStatPill label="API uptime" value={formatPercent(derivedHealth.api_uptime_pct, 2)} tone="primary" />
-              <OwnerStatPill label="Error rate" value={formatPercent(derivedHealth.error_rate_pct, 2)} tone="secondary" />
+              <OwnerStatPill label="Database" value="Not measured" tone="muted" />
+              <OwnerStatPill label="API uptime" value="Not measured" tone="muted" />
+              <OwnerStatPill label="Error rate" value="Not measured" tone="muted" />
               <OwnerStatPill label="Backlog" value={formatCount(derivedHealth.sync_backlog)} tone="primary" />
             </div>
           )}

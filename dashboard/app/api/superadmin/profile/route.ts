@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 import { requirePlatformSession, SessionError } from '@/lib/session';
 import { hashPin, validPin } from '@/lib/pin';
 import { IdentityConflictError, withIdentityEmailLock } from '@/lib/identity-lock';
+import { updateSupabaseIdentity } from '@/lib/supabase/identity';
 
 export async function GET() {
   try {
@@ -39,6 +40,13 @@ export async function PUT(req: Request) {
     }
 
     const normalizedEmail = email.trim().toLocaleLowerCase();
+    const identity = await adminPool.query(
+      'SELECT auth_user_id FROM platform_admins WHERE id = $1 LIMIT 1',
+      [currentId],
+    );
+    if (!identity.rows[0]?.auth_user_id) {
+      return NextResponse.json({ error: 'This administrator is not linked to Supabase Auth yet. Sign out and sign in before changing credentials.' }, { status: 409 });
+    }
     const params: any[] = [name.trim(), normalizedEmail, currentId];
     let query = `
       UPDATE platform_admins
@@ -66,10 +74,16 @@ export async function PUT(req: Request) {
     await withIdentityEmailLock(
       normalizedEmail,
       { excludeStaffId: currentId },
-      (client) => client.query(query, params)
+      async (client) => {
+        await updateSupabaseIdentity(identity.rows[0].auth_user_id, {
+          email: normalizedEmail,
+          pin: pin?.trim() || undefined,
+        });
+        return client.query(query, params);
+      }
     );
 
-    cookies().set('staff_name', name.trim(), { path: '/', httpOnly: false });
+    (await cookies()).set('staff_name', name.trim(), { path: '/', httpOnly: false });
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

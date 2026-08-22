@@ -5,7 +5,7 @@ import { requireTenantSession, SessionError } from '@/lib/session';
 
 export async function GET() {
   try {
-    const { tenantId } = await requireTenantSession(['owner', 'store_manager', 'cashier', 'stock_clerk']);
+    const { tenantId } = await requireTenantSession(['owner', 'store_manager', 'stock_clerk']);
 
     const rows = await fetchTenantQuery(tenantId, `
       SELECT id, name, category, subtype, color, size, cost_price, retail_price, discount_percent, reorder_threshold,
@@ -23,7 +23,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const { tenantId } = await requireTenantSession(['owner', 'store_manager', 'stock_clerk']);
+    const { tenantId } = await requireTenantSession(['owner', 'store_manager']);
 
     const {
       name,
@@ -51,6 +51,9 @@ export async function POST(req: Request) {
     const nextRetailPrice = retail_price ?? cost_price;
     const nextCostPrice = cost_price ?? nextRetailPrice;
     const nextDiscountPercent = Number.isFinite(Number(discount_percent)) ? Math.max(0, Math.min(100, Number(discount_percent))) : 0;
+    if (!Number.isFinite(Number(nextRetailPrice)) || Number(nextRetailPrice) < 0 || !Number.isFinite(Number(nextCostPrice)) || Number(nextCostPrice) < 0) {
+      return NextResponse.json({ error: 'Prices must be valid non-negative numbers' }, { status: 400 });
+    }
 
     const rows = await fetchTenantQuery(tenantId, `
       INSERT INTO variants (tenant_id, name, category, subtype, color, size, cost_price, retail_price, discount_percent, barcode_token, barcode_payload, metadata, missing_fields, detail_status, search_text, zra_tax_ty_cd)

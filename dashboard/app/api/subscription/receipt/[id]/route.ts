@@ -1,126 +1,131 @@
-import { NextResponse } from 'next/server';
-import { adminPool, fetchTenantQuery } from '@/lib/db';
-import { requireTenantSession, SessionError } from '@/lib/session';
+export const dynamic = 'force-dynamic'
 
-export const dynamic = "force-dynamic";
+import { adminPool } from '@/lib/db'
+import { requireTenantSession, SessionError } from '@/lib/session'
+import { NextResponse } from 'next/server'
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function escapeHtml(value: unknown) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  })[character] || character);
+}
+
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
-    const { tenantId } = await requireTenantSession(['owner'], { allowSuspended: true });
-    const transactionId = params.id;
-    if (!transactionId) return new NextResponse('Missing transaction ID', { status: 400 });
+    const { tenantId } = await requireTenantSession(['owner'], { allowSuspended: true })
+    const paymentId = String(params.id || '')
+    if (!UUID_PATTERN.test(paymentId)) return new NextResponse('Invalid receipt ID', { status: 400 })
 
-    // Fetch billing record, ensuring it belongs to the authenticated tenant
-    const res = await adminPool.query(`
-      SELECT * FROM billing_history 
-      WHERE id = $1 AND tenant_id = $2
-    `, [transactionId, tenantId]);
+    const result = await adminPool.query(`
+      SELECT
+        payment.id,
+        payment.provider,
+        payment.provider_reference,
+        payment.provider_transaction_id,
+        payment.amount,
+        payment.currency,
+        payment.status,
+        payment.payer_msisdn,
+        payment.succeeded_at,
+        invoice.invoice_number,
+        invoice.period_start,
+        invoice.period_end,
+        plan.name AS plan_name,
+        tenant.name AS tenant_name,
+        coalesce(settings.business_name, tenant.name) AS business_name
+      FROM subscription_payments AS payment
+      JOIN subscription_invoices AS invoice
+        ON invoice.id = payment.invoice_id AND invoice.tenant_id = payment.tenant_id
+      JOIN subscription_plans AS plan ON plan.id = invoice.plan_id
+      JOIN tenants AS tenant ON tenant.id = payment.tenant_id
+      LEFT JOIN tenant_settings AS settings ON settings.tenant_id = tenant.id
+      WHERE payment.id = $1 AND payment.tenant_id = $2 AND payment.status = 'SUCCEEDED'
+      LIMIT 1
+    `, [paymentId, tenantId])
+    if (result.rowCount !== 1) return new NextResponse('Receipt not found', { status: 404 })
 
-    if (res.rowCount === 0) {
-      return new NextResponse('Receipt not found', { status: 404 });
-    }
+    const record = result.rows[0]
+    const paidAt = new Date(record.succeeded_at).toLocaleString('en-ZM', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+      timeZone: 'Africa/Lusaka',
+    })
+    const servicePeriod = `${new Date(record.period_start).toLocaleDateString('en-ZM')} – ${new Date(record.period_end).toLocaleDateString('en-ZM')}`
+    const amount = new Intl.NumberFormat('en-ZM', {
+      style: 'currency',
+      currency: record.currency,
+    }).format(Number(record.amount))
 
-    const record = res.rows[0];
-
-    // Get tenant details for the receipt
-    const settingsRes = await fetchTenantQuery(tenantId, `SELECT business_name FROM tenant_settings WHERE tenant_id = $1`, [tenantId]);
-    const businessName = settingsRes[0]?.business_name || 'Retail OS Business';
-
-    const dateStr = new Date(record.created_at).toLocaleString('en-ZM', { 
-        dateStyle: 'long', 
-        timeStyle: 'short' 
-    });
-
-    const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Receipt - ${record.reference_id}</title>
-        <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
-            .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 40px; }
-            .logo { font-size: 24px; font-weight: bold; color: #2563eb; }
-            .title { font-size: 28px; color: #111; margin: 0; text-transform: uppercase; letter-spacing: 2px; }
-            .row { display: flex; justify-content: space-between; margin-bottom: 15px; }
-            .label { color: #666; font-weight: 500; }
-            .value { font-weight: 600; text-align: right; }
-            .total-row { border-top: 2px solid #eee; padding-top: 20px; margin-top: 20px; font-size: 20px; }
-            .footer { margin-top: 60px; text-align: center; color: #888; font-size: 14px; }
-            .status { display: inline-block; padding: 6px 12px; border-radius: 4px; background: #dcfce7; color: #166534; font-weight: bold; font-size: 14px; }
-        </style>
-    </head>
-    <body onload="window.print()">
-        <div class="header">
-            <div>
-                <div class="logo">Retail OS</div>
-                <div style="color: #666; margin-top: 5px;">Subscription Billing</div>
-            </div>
-            <div style="text-align: right;">
-                <h1 class="title">Receipt</h1>
-                <div style="color: #666; margin-top: 5px;">#${record.reference_id.substring(0, 8).toUpperCase()}</div>
-            </div>
-        </div>
-
-        <div style="margin-bottom: 40px;">
-            <div class="row">
-                <span class="label">Billed To:</span>
-                <span class="value">${businessName}</span>
-            </div>
-            <div class="row">
-                <span class="label">Date Paid:</span>
-                <span class="value">${dateStr}</span>
-            </div>
-            <div class="row">
-                <span class="label">Payment Method:</span>
-                <span class="value">MTN Mobile Money</span>
-            </div>
-            <div class="row">
-                <span class="label">Paying Mobile Number:</span>
-                <span class="value">${record.payer_msisdn || 'N/A'}</span>
-            </div>
-            <div class="row">
-                <span class="label">Status:</span>
-                <span class="value"><span class="status">${record.status}</span></span>
-            </div>
-        </div>
-
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 40px;">
-            <tr style="border-bottom: 2px solid #eee; text-align: left;">
-                <th style="padding: 10px 0; color: #666;">Description</th>
-                <th style="padding: 10px 0; text-align: right; color: #666;">Amount</th>
-            </tr>
-            <tr>
-                <td style="padding: 20px 0; font-weight: 500;">Retail OS Subscription - ${record.event_type.replace(/_/g, ' ')}</td>
-                <td style="padding: 20px 0; text-align: right; font-weight: 500;">${record.currency} ${Number(record.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-            </tr>
-        </table>
-
-        <div class="row total-row">
-            <span class="label" style="color: #111;">Total Paid</span>
-            <span class="value">${record.currency} ${Number(record.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-        </div>
-
-        <div class="footer">
-            Thank you for your business.<br>
-            If you have any questions regarding this receipt, please contact support@retailos.com.
-        </div>
-    </body>
-    </html>
-    `;
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Receipt ${escapeHtml(record.invoice_number)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f6f8; color: #17202a; font: 15px/1.55 Arial, sans-serif; }
+    main { width: min(760px, calc(100% - 32px)); margin: 40px auto; padding: 44px; background: white; border: 1px solid #e4e7eb; border-radius: 16px; }
+    header, .row { display: flex; justify-content: space-between; gap: 24px; }
+    header { padding-bottom: 26px; border-bottom: 2px solid #17202a; }
+    h1 { margin: 0; font-size: 30px; letter-spacing: .08em; }
+    .brand { font-size: 22px; font-weight: 800; color: #16834b; }
+    .muted { color: #637083; }
+    .details { margin: 32px 0; display: grid; gap: 12px; }
+    .row { padding-bottom: 10px; border-bottom: 1px solid #edf0f2; }
+    .value { font-weight: 700; text-align: right; }
+    .line-item { margin-top: 30px; padding: 20px 0; border-top: 2px solid #17202a; border-bottom: 1px solid #dfe4e8; }
+    .total { padding-top: 20px; font-size: 21px; font-weight: 800; }
+    .status { display: inline-block; padding: 5px 10px; border-radius: 999px; color: #096b3a; background: #e2f7ec; font-size: 12px; font-weight: 800; }
+    footer { margin-top: 52px; color: #637083; font-size: 13px; text-align: center; }
+    @media print { body { background: white; } main { width: 100%; margin: 0; border: 0; padding: 24px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div><div class="brand">Retail OS</div><div class="muted">Subscription billing</div></div>
+      <div style="text-align:right"><h1>RECEIPT</h1><div class="muted">${escapeHtml(record.invoice_number)}</div></div>
+    </header>
+    <section class="details" aria-label="Receipt details">
+      <div class="row"><span class="muted">Billed to</span><span class="value">${escapeHtml(record.business_name)}</span></div>
+      <div class="row"><span class="muted">Paid</span><span class="value">${escapeHtml(paidAt)}</span></div>
+      <div class="row"><span class="muted">Provider</span><span class="value">${escapeHtml(String(record.provider).replace(/_/g, ' '))}</span></div>
+      <div class="row"><span class="muted">Provider reference</span><span class="value">${escapeHtml(record.provider_reference)}</span></div>
+      <div class="row"><span class="muted">Paying number</span><span class="value">${escapeHtml(record.payer_msisdn || 'Not supplied')}</span></div>
+      <div class="row"><span class="muted">Status</span><span class="value"><span class="status">PAID</span></span></div>
+    </section>
+    <section class="line-item">
+      <div class="row" style="border:0">
+        <span><strong>${escapeHtml(record.plan_name)}</strong><br><span class="muted">Service period ${escapeHtml(servicePeriod)}</span></span>
+        <span class="value">${escapeHtml(amount)}</span>
+      </div>
+    </section>
+    <div class="row total"><span>Total paid</span><span>${escapeHtml(amount)}</span></div>
+    <footer>This receipt records a payment independently verified with the payment provider.</footer>
+  </main>
+</body>
+</html>`
 
     return new NextResponse(html, {
       headers: {
-        'Content-Type': 'text/html',
-        // Optional: uncomment below to force download instead of opening in browser
-        // 'Content-Disposition': \`attachment; filename="receipt-${record.reference_id.substring(0, 8)}.html"\`
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
       },
-    });
-
+    })
   } catch (error) {
-    if (error instanceof SessionError) {
-      return new NextResponse(error.message, { status: error.status });
-    }
-    console.error('Receipt Generation Error:', error);
-    return new NextResponse('Internal Server Error', { status: 500 });
+    if (error instanceof SessionError) return new NextResponse(error.message, { status: error.status })
+    console.error('[Subscription Receipt Error]', error)
+    return new NextResponse('Unable to generate receipt', { status: 500 })
   }
 }

@@ -1,18 +1,8 @@
-import Sidebar from '@/components/Sidebar'
+import { redirect } from 'next/navigation'
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  return (
-    <div className="page-layout">
-      <Sidebar />
-      <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div className="page-content">
-          {children}
-        </div>
-      </main>
-    </div>
-  )
+export default function LegacyDashboardLayout() {
+  // This route tree was an early static prototype and included fabricated
+  // activity and health signals. Preserve old bookmarks by redirecting them
+  // into the authenticated production dashboard.
+  redirect('/')
 }

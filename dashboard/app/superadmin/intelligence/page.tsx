@@ -8,19 +8,15 @@ export default async function IntelligencePage() {
   const [planRows, valueRows, adoptionRows, featureRows] = await Promise.all([
     fetchQuery(`
       SELECT
-        subscription_tier,
-        COUNT(*)::int AS tenant_count,
-        SUM(CASE WHEN COALESCE(UPPER(status), 'ACTIVE') = 'ACTIVE' THEN
-          CASE subscription_tier
-            WHEN 'boutique_starter' THEN 1200
-            WHEN 'growth' THEN 3500
-            WHEN 'enterprise_fleet' THEN 9500
-            ELSE 0
-          END ELSE 0 END) AS mrr,
-        COUNT(DISTINCT l.id)::int AS locations
-      FROM tenants t
-      LEFT JOIN locations l ON l.tenant_id = t.id
-      GROUP BY subscription_tier
+        plan.code AS subscription_tier,
+        COUNT(DISTINCT tenant.id)::int AS tenant_count,
+        plan.price_zmw
+          * COUNT(DISTINCT tenant.id) FILTER (WHERE UPPER(tenant.status) = 'ACTIVE') AS mrr,
+        COUNT(DISTINCT location.id) FILTER (WHERE location.is_active)::int AS locations
+      FROM subscription_plans AS plan
+      LEFT JOIN tenants AS tenant ON tenant.subscription_plan_id = plan.id
+      LEFT JOIN locations AS location ON location.tenant_id = tenant.id
+      GROUP BY plan.id, plan.code, plan.price_zmw
       ORDER BY tenant_count DESC
     `),
     fetchQuery(`
@@ -56,9 +52,19 @@ export default async function IntelligencePage() {
     fetchQuery(`
       SELECT
         t.subscription_tier,
-        COUNT(*) FILTER (WHERE COALESCE(t.zra_configured, FALSE))::int AS zra_ready,
-        COUNT(*) FILTER (WHERE COALESCE(t.zra_configured, FALSE) = FALSE)::int AS zra_missing
+        COUNT(*) FILTER (
+          WHERE settings.zra_enabled
+            AND settings.zra_vsdc_url IS NOT NULL
+            AND settings.zra_vsdc_url <> ''
+        )::int AS zra_ready,
+        COUNT(*) FILTER (
+          WHERE settings.tenant_id IS NULL
+             OR NOT settings.zra_enabled
+             OR settings.zra_vsdc_url IS NULL
+             OR settings.zra_vsdc_url = ''
+        )::int AS zra_missing
       FROM tenants t
+      LEFT JOIN tenant_settings AS settings ON settings.tenant_id = t.id
       GROUP BY t.subscription_tier
       ORDER BY t.subscription_tier
     `),

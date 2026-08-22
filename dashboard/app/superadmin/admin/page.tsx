@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Shield, Mail, Lock, Calendar, CheckCircle2, Save, Loader, AlertCircle, User } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 type Profile = {
   id: string;
@@ -35,6 +36,26 @@ const labelStyle: React.CSSProperties = {
   marginBottom: '8px',
   display: 'block',
 };
+
+function StatCard({ icon: Icon, label, value, tone }: { icon: LucideIcon; label: string; value: string; tone: 'green' | 'blue' | 'muted' }) {
+  const colors = {
+    green: { bg: 'rgba(74,222,128,0.08)', border: 'rgba(74,222,128,0.2)', icon: '#4ade80', val: '#4ade80' },
+    blue:  { bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.2)', icon: '#60a5fa', val: 'var(--text-main)' },
+    muted: { bg: 'rgba(255,255,255,0.03)', border: 'var(--panel-border)', icon: 'var(--text-muted)', val: 'var(--text-main)' },
+  }[tone];
+
+  return (
+    <div style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: '14px', padding: '20px 22px', display: 'flex', gap: '16px', alignItems: 'center' }}>
+      <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: `${colors.icon}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon size={18} color={colors.icon} />
+      </div>
+      <div>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>{label}</div>
+        <div style={{ fontSize: '15px', fontWeight: 700, color: colors.val, wordBreak: 'break-all' }}>{value}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function SuperAdminProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -77,25 +98,6 @@ export default function SuperAdminProfilePage() {
     } catch {
       setError('Network error while saving.');
     } finally { setSaving(false); }
-  };
-
-  const StatCard = ({ icon: Icon, label, value, tone }: { icon: any; label: string; value: string; tone: 'green' | 'blue' | 'muted' }) => {
-    const colors = {
-      green: { bg: 'rgba(74,222,128,0.08)', border: 'rgba(74,222,128,0.2)', icon: '#4ade80', val: '#4ade80' },
-      blue:  { bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.2)', icon: '#60a5fa', val: 'var(--text-main)' },
-      muted: { bg: 'rgba(255,255,255,0.03)', border: 'var(--panel-border)', icon: 'var(--text-muted)', val: 'var(--text-main)' },
-    }[tone];
-    return (
-      <div style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: '14px', padding: '20px 22px', display: 'flex', gap: '16px', alignItems: 'center' }}>
-        <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: `${colors.icon}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Icon size={18} color={colors.icon} />
-        </div>
-        <div>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>{label}</div>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: colors.val, wordBreak: 'break-all' }}>{value}</div>
-        </div>
-      </div>
-    );
   };
 
   return (

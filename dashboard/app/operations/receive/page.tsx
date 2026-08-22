@@ -203,6 +203,21 @@ export default function ReceivePage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openedEditIdRef = useRef<string | null>(null);
 
+  const openVariantEditor = (variant: Variant) => {
+    setEditingVariant(variant);
+    const description = getVariantDescription(variant.metadata);
+    setEditDraft({
+      name: variant.name || '',
+      category: variant.category || '',
+      subtype: variant.subtype || '',
+      color: variant.color || '',
+      size: variant.size || '',
+      barcode_token: variant.barcode_token || '',
+      retail_price: String(variant.retail_price ?? ''),
+      description,
+    });
+  };
+
   useEffect(() => {
     const name = document.cookie.match(new RegExp('(^| )tenant_name=([^;]+)'))?.[2];
     if (name) setStoreName(decodeURIComponent(name));
@@ -301,21 +316,6 @@ export default function ReceivePage() {
       newItems,
     };
   }, [sheetRows]);
-
-  const openVariantEditor = (variant: Variant) => {
-    setEditingVariant(variant);
-    const description = getVariantDescription(variant.metadata);
-    setEditDraft({
-      name: variant.name || '',
-      category: variant.category || '',
-      subtype: variant.subtype || '',
-      color: variant.color || '',
-      size: variant.size || '',
-      barcode_token: variant.barcode_token || '',
-      retail_price: String(variant.retail_price ?? ''),
-      description,
-    });
-  };
 
   const saveVariantEdit = async () => {
     if (!editingVariant) return;

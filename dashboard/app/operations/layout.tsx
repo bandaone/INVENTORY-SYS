@@ -6,7 +6,7 @@ import { requireTenantSession } from '@/lib/session';
 export const dynamic = 'force-dynamic';
 
 export default async function OperationsLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const session = await requireTenantSession(['store_manager', 'stock_clerk']).catch(() => null);
   const tenantId = session?.tenantId;
   const staffRole = session?.role || '';

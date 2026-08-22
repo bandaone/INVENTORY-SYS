@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { Save, Loader2, CheckCircle2, MapPin, Plus, CreditCard, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
 
@@ -43,6 +44,21 @@ interface Location {
   name: string;
   address: string;
   is_active: boolean;
+}
+
+function ToggleSwitch({ enabled, onChange, id }: { enabled: boolean; onChange: (value: boolean) => void; id: string }) {
+  return (
+    <button
+      type="button"
+      id={id}
+      role="switch"
+      aria-checked={enabled}
+      onClick={() => onChange(!enabled)}
+      style={{ width: '44px', height: '24px', background: enabled ? 'var(--primary)' : 'var(--panel-border)', borderRadius: '12px', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.2s' }}
+    >
+      <span style={{ position: 'absolute', top: '2px', left: enabled ? '22px' : '2px', width: '20px', height: '20px', background: enabled ? '#0f1115' : 'var(--text-muted)', borderRadius: '50%', transition: 'left 0.2s' }} />
+    </button>
+  );
 }
 
 export default function SettingsPage() {
@@ -171,8 +187,8 @@ export default function SettingsPage() {
 
   const readLogoFile = (file: File) =>
     new Promise<string>((resolve, reject) => {
-      if (!file.type.startsWith('image/')) {
-        reject(new Error('Please upload a PNG, JPG, WEBP, or SVG image.'));
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+        reject(new Error('Please upload a PNG, JPG, or WEBP image.'));
         return;
       }
 
@@ -201,12 +217,6 @@ export default function SettingsPage() {
 
   const inputStyle = { width: '100%', padding: '10px 14px', background: 'var(--bg-color)', border: '1px solid var(--panel-border)', color: 'var(--text-main)', borderRadius: '8px', fontFamily: 'inherit', fontSize: '14px' };
   const labelStyle = { display: 'block', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 500 } as const;
-
-  const ToggleSwitch = ({ enabled, onChange, id }: { enabled: boolean; onChange: (v: boolean) => void; id: string }) => (
-    <button id={id} onClick={() => onChange(!enabled)} style={{ width: '44px', height: '24px', background: enabled ? 'var(--primary)' : 'var(--panel-border)', borderRadius: '12px', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.2s' }}>
-      <div style={{ position: 'absolute', top: '2px', left: enabled ? '22px' : '2px', width: '20px', height: '20px', background: enabled ? '#0f1115' : 'var(--text-muted)', borderRadius: '50%', transition: 'left 0.2s' }} />
-    </button>
-  );
 
   if (loading) return (
     <div className="animate-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', gap: '8px', color: 'var(--text-muted)' }}>
@@ -401,7 +411,7 @@ export default function SettingsPage() {
                     {zraInitializing ? 'Connecting to VSDC...' : 'Test Connection & Initialize'}
                   </button>
                   <p style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center', lineHeight: '1.4' }}>
-                    Initializes cryptographic keys with ZRA. Your VSDC server must be running and accessible from this app's network to activate.
+                    Initializes cryptographic keys with ZRA. Your VSDC server must be running and accessible from this app&apos;s network to activate.
                   </p>
                 </div>
               </div>
@@ -416,7 +426,7 @@ export default function SettingsPage() {
             <input
               ref={logoInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
               style={{ display: 'none' }}
               onChange={(e) => handleLogoFile(e.target.files?.[0])}
             />
@@ -442,7 +452,7 @@ export default function SettingsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div>
                   <div style={{ fontWeight: 700, marginBottom: '4px' }}>Drag and drop a logo here</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>PNG, JPG, WEBP, or SVG. Max 1 MB. It will print at the top of receipts.</div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>PNG, JPG, or WEBP. Max 1 MB. It will print at the top of receipts.</div>
                 </div>
                 <button
                   type="button"
@@ -457,9 +467,12 @@ export default function SettingsPage() {
               </div>
               {form.receipt_logo_data_url && (
                 <div style={{ marginTop: '16px', background: '#fff', borderRadius: '12px', padding: '16px', border: '1px solid var(--panel-border)', display: 'grid', placeItems: 'center' }}>
-                  <img
+                  <Image
                     src={form.receipt_logo_data_url}
                     alt="Receipt logo preview"
+                    width={240}
+                    height={80}
+                    unoptimized
                     style={{ maxHeight: '80px', maxWidth: '100%', objectFit: 'contain' }}
                   />
                 </div>
@@ -500,9 +513,12 @@ export default function SettingsPage() {
             <div style={{ padding: '24px', background: '#fff', color: '#000', borderRadius: '8px', width: '280px', margin: '0 auto', fontFamily: 'monospace', fontSize: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
               {form.receipt_logo_data_url ? (
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
-                  <img
+                  <Image
                     src={form.receipt_logo_data_url}
                     alt="Receipt logo preview"
+                    width={180}
+                    height={48}
+                    unoptimized
                     style={{ maxHeight: '48px', maxWidth: '180px', objectFit: 'contain' }}
                   />
                 </div>

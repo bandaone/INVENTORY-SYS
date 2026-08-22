@@ -1,6 +1,10 @@
-import { NextResponse } from 'next/server'
-import { adminPool } from '@/lib/db'
+import {
+  finalizeVerifiedPayment,
+  findPaymentByReference,
+  recordProviderEvent,
+} from '@/lib/billing'
 import { sendSubscriptionReceiptEmail } from '@/lib/email'
+import { NextResponse } from 'next/server'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -9,12 +13,7 @@ async function getVerifiedMomoStatus(referenceId: string) {
   const apiUser = process.env.MTN_MOMO_API_USER
   const apiKey = process.env.MTN_MOMO_API_KEY
   const environment = process.env.MTN_MOMO_ENVIRONMENT
-
-  // Never let an unauthenticated callback mutate billing from its body alone.
-  // Local sandbox payments use the authenticated sandbox-pay route instead.
-  if (!subscriptionKey || !apiUser || !apiKey || !environment || subscriptionKey === 'sandbox') {
-    return null
-  }
+  if (!subscriptionKey || !apiUser || !apiKey || !environment || subscriptionKey === 'sandbox') return null
 
   const host = environment === 'sandbox'
     ? 'sandbox.momodeveloper.mtn.com'
@@ -28,7 +27,7 @@ async function getVerifiedMomoStatus(referenceId: string) {
     },
     signal: AbortSignal.timeout(10_000),
   })
-  if (!tokenResponse.ok) throw new Error('Unable to authenticate payment status check')
+  if (!tokenResponse.ok) throw new Error('Unable to authenticate the MTN status check')
 
   const token = await tokenResponse.json()
   const statusResponse = await fetch(
@@ -41,146 +40,91 @@ async function getVerifiedMomoStatus(referenceId: string) {
         'Ocp-Apim-Subscription-Key': subscriptionKey,
       },
       signal: AbortSignal.timeout(10_000),
-    }
+    },
   )
-  if (!statusResponse.ok) throw new Error('Unable to verify payment status')
+  if (!statusResponse.ok) throw new Error('Unable to verify the MTN payment status')
 
   const verified = await statusResponse.json()
-  return ['PENDING', 'SUCCESSFUL', 'FAILED'].includes(verified?.status)
-    ? {
-        status: verified.status as 'PENDING' | 'SUCCESSFUL' | 'FAILED',
-        amount: Number(verified.amount),
-        currency: String(verified.currency || '').toUpperCase(),
-      }
-    : null
+  if (!['PENDING', 'SUCCESSFUL', 'FAILED'].includes(verified?.status)) return null
+  return {
+    status: verified.status as 'PENDING' | 'SUCCESSFUL' | 'FAILED',
+    amount: Number(verified.amount),
+    currency: String(verified.currency || '').toUpperCase(),
+    financialTransactionId: verified.financialTransactionId
+      ? String(verified.financialTransactionId)
+      : null,
+    externalId: verified.externalId ? String(verified.externalId) : null,
+  }
 }
 
 export async function POST(req: Request) {
+  const startedAt = Date.now()
+  let referenceId = ''
   try {
-    const payload = await req.json()
-    const referenceId = String(payload?.referenceId || '').trim()
-    if (!UUID_PATTERN.test(referenceId)) {
-      return new NextResponse('Invalid reference', { status: 400 })
-    }
+    const payload = await req.json().catch(() => ({}))
+    referenceId = String(payload?.referenceId || '').trim()
+    if (!UUID_PATTERN.test(referenceId)) return new NextResponse('Invalid reference', { status: 400 })
 
-    // Reject unknown references locally before spending provider API quota.
-    // Keep the response generic so this endpoint is not a payment oracle.
-    const localReference = await adminPool.query(
-      `SELECT 1 FROM billing_history WHERE reference_id = $1 AND status = 'PENDING' LIMIT 2`,
-      [referenceId]
-    )
-    if ((localReference.rowCount ?? 0) === 0) return new NextResponse('OK', { status: 200 })
-    if ((localReference.rowCount ?? 0) !== 1) {
-      throw new Error('Ambiguous payment reference; manual reconciliation required')
-    }
+    const localPayment = await findPaymentByReference('MTN_MOMO', referenceId)
+    if (!localPayment || localPayment.status !== 'PENDING') return new NextResponse('OK', { status: 200 })
 
-    // MTN callback documentation does not guarantee a cryptographic signature.
-    // Treat the callback only as a notification and independently query MTN's
-    // authenticated status API before changing any tenant or payment record.
-    const verifiedPayment = await getVerifiedMomoStatus(referenceId)
-    if (!verifiedPayment) {
-      return new NextResponse('Payment verification unavailable', { status: 503 })
-    }
-    if (verifiedPayment.status === 'PENDING') return new NextResponse('OK', { status: 200 })
+    // MTN callbacks are notifications, not proof. Always query the authenticated
+    // provider status endpoint before changing billing state.
+    const verified = await getVerifiedMomoStatus(referenceId)
+    if (!verified) return new NextResponse('Payment verification unavailable', { status: 503 })
 
-    const client = await adminPool.connect()
-    let receipt: null | {
-      email: string
-      referenceId: string
-      amount: number
-      currency: string
-      payerMsisdn: string | null
-    } = null
+    const result = await finalizeVerifiedPayment({
+      provider: 'MTN_MOMO',
+      providerReference: referenceId,
+      status: verified.status === 'SUCCESSFUL' ? 'SUCCEEDED' : verified.status,
+      paidAmount: verified.amount,
+      currency: verified.currency,
+      providerTransactionId: verified.financialTransactionId,
+      providerMetadata: {
+        external_id: verified.externalId,
+        verified_status: verified.status,
+      },
+    })
+    await recordProviderEvent({
+      provider: 'MTN_MOMO',
+      eventId: `verified:${referenceId}:${verified.status}`,
+      eventType: 'request_to_pay_status',
+      paymentId: localPayment.id,
+      tenantId: localPayment.tenant_id,
+      payload: {
+        reference_id: referenceId,
+        status: verified.status,
+        amount: verified.amount,
+        currency: verified.currency,
+        financial_transaction_id: verified.financialTransactionId,
+      },
+      status: verified.status === 'PENDING' ? 'IGNORED' : 'PROCESSED',
+    })
 
-    try {
-      await client.query('BEGIN')
-      const pending = await client.query(`
-        SELECT id, tenant_id, reference_id, amount, currency, payer_msisdn
-        FROM billing_history
-        WHERE reference_id = $1 AND status = 'PENDING'
-        FOR UPDATE
-      `, [referenceId])
-
-      if ((pending.rowCount ?? 0) === 0) {
-        await client.query('ROLLBACK')
-        return new NextResponse('OK', { status: 200 })
-      }
-      if ((pending.rowCount ?? 0) !== 1) {
-        throw new Error('Ambiguous payment reference; manual reconciliation required')
-      }
-
-      const billing = pending.rows[0]
-      if (verifiedPayment.status === 'SUCCESSFUL') {
-        if (
-          !Number.isFinite(verifiedPayment.amount)
-          || verifiedPayment.amount < Number(billing.amount)
-          || verifiedPayment.currency !== String(billing.currency).toUpperCase()
-        ) {
-          throw new Error('Verified payment does not match the pending invoice')
-        }
-      }
-
-      await client.query(`
-        UPDATE billing_history
-        SET status = $1, updated_at = NOW()
-        WHERE id = $2 AND status = 'PENDING'
-      `, [verifiedPayment.status, billing.id])
-
-      if (verifiedPayment.status === 'SUCCESSFUL') {
-        const tenant = await client.query(`
-          SELECT tenant.id, tenant.subscription_end_date, settings.owner_email
-          FROM tenants AS tenant
-          LEFT JOIN tenant_settings AS settings ON settings.tenant_id = tenant.id
-          WHERE tenant.id = $1
-          FOR UPDATE OF tenant
-        `, [billing.tenant_id])
-
-        if ((tenant.rowCount ?? 0) !== 1) throw new Error('Payment tenant not found')
-        let newEndDate = new Date()
-        const currentEndDate = tenant.rows[0].subscription_end_date
-          ? new Date(tenant.rows[0].subscription_end_date)
-          : null
-        if (currentEndDate && currentEndDate > newEndDate) newEndDate = currentEndDate
-        newEndDate.setDate(newEndDate.getDate() + 30)
-
-        await client.query(`
-          UPDATE tenants
-          SET status = 'ACTIVE', subscription_end_date = $1, updated_at = NOW()
-          WHERE id = $2
-        `, [newEndDate, billing.tenant_id])
-
-        if (tenant.rows[0].owner_email) {
-          receipt = {
-            email: tenant.rows[0].owner_email,
-            referenceId: billing.reference_id,
-            amount: billing.amount,
-            currency: billing.currency,
-            payerMsisdn: billing.payer_msisdn,
-          }
-        }
-      }
-
-      await client.query('COMMIT')
-    } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined)
-      throw error
-    } finally {
-      client.release()
-    }
-
-    if (receipt) {
-      await sendSubscriptionReceiptEmail(receipt.email, {
-        referenceId: receipt.referenceId,
+    if (result.receipt) {
+      await sendSubscriptionReceiptEmail(result.receipt.email, {
+        referenceId: result.receipt.referenceId,
         date: new Date().toISOString(),
-        amount: receipt.amount,
-        currency: receipt.currency,
-        payerMsisdn: receipt.payerMsisdn,
-      })
+        amount: result.receipt.amount,
+        currency: result.receipt.currency,
+        payerMsisdn: result.receipt.payerMsisdn,
+      }).catch((error) => console.error(JSON.stringify({
+        level: 'error', message: 'Subscription receipt email failed', referenceId,
+        error: error instanceof Error ? error.message : String(error),
+      })))
     }
 
+    console.log(JSON.stringify({
+      level: 'info', message: 'MTN callback reconciled', referenceId,
+      status: verified.status, changed: result.changed, durationMs: Date.now() - startedAt,
+    }))
     return new NextResponse('OK', { status: 200 })
   } catch (error) {
-    console.error('[MTN Callback Error]', error)
+    console.error(JSON.stringify({
+      level: 'error', message: 'MTN callback failed', referenceId,
+      error: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startedAt,
+    }))
     return new NextResponse('Internal Server Error', { status: 500 })
   }
 }

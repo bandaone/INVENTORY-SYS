@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/zra-sync",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/trial-check",
+      "schedule": "10 0 * * *"
+    },
+    {
+      "path": "/api/cron/metrics-rollup",
+      "schedule": "20 0 * * *"
     }
   ]
 }
