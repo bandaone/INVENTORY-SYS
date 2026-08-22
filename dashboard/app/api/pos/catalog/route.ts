@@ -9,6 +9,7 @@ const POS_ROLES = ['owner', 'store_manager', 'cashier'] as const
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DEFAULT_PAGE_SIZE = 36
 const MAX_PAGE_SIZE = 60
+const MAX_SNAPSHOT_PAGE_SIZE = 500
 
 type CatalogCursor = { rank: number; name: string; id: string }
 
@@ -39,9 +40,11 @@ export async function GET(req: Request) {
     const query = (searchParams.get('q')?.trim().toLocaleLowerCase() || '').slice(0, 200)
     const category = (searchParams.get('category')?.trim() || '').slice(0, 120)
     const requestedLocationId = searchParams.get('location_id')?.trim() || ''
+    const snapshot = searchParams.get('snapshot') === '1'
     const requestedLimit = Number(searchParams.get('limit') || DEFAULT_PAGE_SIZE)
+    const maximumLimit = snapshot ? MAX_SNAPSHOT_PAGE_SIZE : MAX_PAGE_SIZE
     const limit = Number.isInteger(requestedLimit)
-      ? Math.max(12, Math.min(MAX_PAGE_SIZE, requestedLimit))
+      ? Math.max(12, Math.min(maximumLimit, requestedLimit))
       : DEFAULT_PAGE_SIZE
     const cursorValue = searchParams.get('cursor') || ''
     const cursor = cursorValue ? decodeCursor(cursorValue) : null
@@ -122,10 +125,22 @@ export async function GET(req: Request) {
           ORDER BY exact_rank ASC, sort_name ASC, id ASC
           LIMIT $8
         )
-        SELECT page.*, stock.available_count, stock.barcode_token
+        SELECT page.*, stock.available_count, stock.barcode_token,
+          stock.identifiers, stock.offline_search
         FROM page
         CROSS JOIN LATERAL (
-          SELECT COUNT(*)::integer AS available_count, MIN(item.barcode_token) AS barcode_token
+          SELECT
+            COUNT(*)::integer AS available_count,
+            MIN(item.barcode_token) AS barcode_token,
+            CASE WHEN $9::boolean THEN ARRAY_REMOVE(
+              ARRAY_AGG(DISTINCT NULLIF(LOWER(item.serial), ''))
+              || ARRAY_AGG(DISTINCT NULLIF(LOWER(item.barcode_token), ''))
+              || ARRAY_AGG(DISTINCT NULLIF(LOWER(item.source_code), '')),
+              NULL
+            ) ELSE ARRAY[]::text[] END AS identifiers,
+            CASE WHEN $9::boolean THEN STRING_AGG(
+              DISTINCT LOWER(COALESCE(item.search_text, '')), ' '
+            ) ELSE NULL END AS offline_search
           FROM garments item
           WHERE item.tenant_id = $3
             AND item.variant_id = page.id
@@ -134,7 +149,7 @@ export async function GET(req: Request) {
         ) stock
         ORDER BY page.exact_rank ASC, page.sort_name ASC, page.id ASC
       `, [query, locationId, session.tenantId, category, cursor?.rank ?? 0,
-        cursor?.name ?? '', cursor?.id ?? null, limit + 1]),
+        cursor?.name ?? '', cursor?.id ?? null, limit + 1, snapshot]),
       searchParams.get('include_facets') === '1'
         ? fetchTenantQuery(session.tenantId, `
             SELECT DISTINCT v.category
@@ -169,6 +184,10 @@ export async function GET(req: Request) {
       barcode_token: row.barcode_token || null,
       barcode: row.barcode_token || null,
       search_text: row.search_text || null,
+      ...(snapshot ? {
+        identifiers: Array.isArray(row.identifiers) ? row.identifiers : [],
+        search_blob: row.offline_search || null,
+      } : {}),
       exact_match: Number(row.exact_rank) === 0,
       display_name: [row.category, row.subtype, row.name].filter(Boolean).join(' / '),
       display_variant: [row.name, row.size, row.color].filter(Boolean).join(' · '),
@@ -181,6 +200,7 @@ export async function GET(req: Request) {
       categories: categoryRows.map((row: any) => String(row.category)),
       pageSize: limit,
       query,
+      snapshot,
     })
   } catch (error) {
     if (error instanceof SessionError) {

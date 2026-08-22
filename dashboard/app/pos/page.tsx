@@ -38,6 +38,7 @@ interface Variant {
   display_variant?: string;
   barcode?: string | null;
   search_blob?: string | null;
+  identifiers?: string[];
   exact_match?: boolean;
 }
 interface CartItem { id: string; variant_id: string; name: string; size: string | null; color: string | null; price: number; quantity: number; discount_percent: number; max_quantity: number; }
@@ -82,6 +83,39 @@ interface ReturnLookupItem {
   returnable_quantity: number;
 }
 
+const CATALOG_PAGE_SIZE = 36;
+const OFFLINE_SNAPSHOT_PAGE_SIZE = 500;
+
+function cachedCatalogMatches(catalog: Variant[], query: string, category: string) {
+  const normalized = query.trim().toLocaleLowerCase();
+  return catalog
+    .filter((item) => {
+      if (category && item.category !== category) return false;
+      if (!normalized) return true;
+      return [
+        item.name,
+        item.category,
+        item.subtype,
+        item.color,
+        item.size,
+        item.barcode,
+        item.barcode_token,
+        item.search_text,
+        item.search_blob,
+        ...(item.identifiers || []),
+      ].filter(Boolean).join(' ').toLocaleLowerCase().includes(normalized);
+    })
+    .map((item) => ({
+      ...item,
+      exact_match: Boolean(normalized && [
+        item.barcode,
+        item.barcode_token,
+        ...(item.identifiers || []),
+      ].some((value) => value?.toLocaleLowerCase() === normalized)),
+    }))
+    .slice(0, CATALOG_PAGE_SIZE);
+}
+
 function getCookie(name: string) {
   if (typeof document === 'undefined') return '';
   const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
@@ -114,6 +148,8 @@ export default function POSPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
+  const [offlineCatalogCount, setOfflineCatalogCount] = useState(0);
+  const [offlineCatalogSyncing, setOfflineCatalogSyncing] = useState(false);
   const [activeCategory, setActiveCategory] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [processing, setProcessing] = useState(false);
@@ -239,20 +275,40 @@ export default function POSPage() {
     const query = options.query ?? debouncedSearch;
     const requestId = ++catalogRequestRef.current;
     const cached = await getCatalogSnapshot<Variant>(catalogScopeKey).catch(() => null);
-    if (!append && !query && !activeCategory && cached?.catalog.length) {
-      setCatalog(cached.catalog);
+    const cachedMatches = cachedCatalogMatches(cached?.catalog || [], query, activeCategory);
+    if (cached?.catalog.length) {
+      setOfflineCatalogCount(cached.catalog.length);
+      setCategories((current) => current.length ? current : Array.from(new Set(
+        cached.catalog.map((item) => item.category).filter((value): value is string => Boolean(value)),
+      )).sort());
+    }
+    if (!append && cachedMatches.length) {
+      setCatalog(cachedMatches);
       setCatalogSource('cached');
     }
 
     if (append) setCatalogLoadingMore(true);
     else setCatalogLoading(true);
     setCatalogError('');
+    if (!navigator.onLine) {
+      setCatalog(cachedMatches);
+      setCatalogSource('cached');
+      setNextCursor(null);
+      setHasMore(false);
+      setCatalogLoading(false);
+      setCatalogLoadingMore(false);
+      setCatalogError(cachedMatches.length
+        ? 'Offline mode: results are coming from this till\'s local catalog.'
+        : 'This product is not in the local catalog yet. Reconnect this till to refresh it.');
+      setOnline(false);
+      return cachedMatches;
+    }
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8000);
     try {
       const params = new URLSearchParams({
         location_id: selectedLocationId,
-        limit: '36',
+        limit: String(CATALOG_PAGE_SIZE),
         include_facets: append ? '0' : '1',
       });
       if (query) params.set('q', query);
@@ -284,27 +340,32 @@ export default function POSPage() {
       if (Array.isArray(data.categories) && data.categories.length) setCategories(data.categories);
       setCatalogSource('live');
       setOnline(true);
-      if (!append && !query && !activeCategory) await saveCatalogSnapshot(catalogScopeKey, items);
+      if (!append && !query && !activeCategory) {
+        const merged = new Map((cached?.catalog || []).map((item) => [item.id, item]));
+        items.forEach((item) => {
+          const previous = merged.get(item.id);
+          merged.set(item.id, {
+            ...previous,
+            ...item,
+            identifiers: previous?.identifiers,
+            search_blob: previous?.search_blob,
+          });
+        });
+        const mergedCatalog = Array.from(merged.values());
+        await saveCatalogSnapshot(catalogScopeKey, mergedCatalog);
+        setOfflineCatalogCount(mergedCatalog.length);
+      }
       return items;
     } catch (error: any) {
       if (requestId !== catalogRequestRef.current) return [] as Variant[];
       const message = error?.name === 'AbortError'
         ? 'Catalog search timed out. Cached items remain available.'
         : error?.message || 'Catalog is unavailable.';
-      const fallback = cached?.catalog || [];
-      if (fallback.length) {
-        const normalized = query.toLocaleLowerCase();
-        setCatalog(fallback.filter((item) => (
-          (!activeCategory || item.category === activeCategory)
-          && (!normalized || [item.name, item.category, item.subtype, item.color, item.size,
-            item.barcode, item.barcode_token, item.search_text]
-            .filter(Boolean).join(' ').toLocaleLowerCase().includes(normalized))
-        )));
-        setCatalogSource('cached');
-      }
+      setCatalog(cachedMatches);
+      if (cached?.catalog.length) setCatalogSource('cached');
       setCatalogError(message);
       setOnline(false);
-      return [] as Variant[];
+      return cachedMatches;
     } finally {
       clearTimeout(timeout);
       if (requestId === catalogRequestRef.current) {
@@ -317,6 +378,79 @@ export default function POSPage() {
   useEffect(() => {
     void refreshCatalog();
   }, [refreshCatalog]);
+
+  useEffect(() => {
+    if (!online || !catalogScopeKey || !selectedLocationId) return;
+    let cancelled = false;
+    let activeController: AbortController | null = null;
+
+    void (async () => {
+      setOfflineCatalogSyncing(true);
+      try {
+        const snapshot = new Map<string, Variant>();
+        const usedCursors = new Set<string>();
+        let cursor = '';
+        let complete = false;
+
+        for (let page = 0; page < 200 && !cancelled; page += 1) {
+          activeController = new AbortController();
+          const timeout = window.setTimeout(() => activeController?.abort(), 15000);
+          try {
+            const params = new URLSearchParams({
+              location_id: selectedLocationId,
+              limit: String(OFFLINE_SNAPSHOT_PAGE_SIZE),
+              include_facets: '0',
+              snapshot: '1',
+            });
+            if (cursor) params.set('cursor', cursor);
+            const response = await posFetch(`/api/pos/catalog?${params.toString()}`, {
+              cache: 'no-store',
+              signal: activeController.signal,
+            });
+            const data = await response.json().catch(() => ({}));
+            if (response.status === 401) {
+              clearPosTerminalSession();
+              router.replace('/login?next=/pos&reason=till_locked');
+              return;
+            }
+            if (!response.ok || !Array.isArray(data.items)) {
+              throw new Error(data.error || `Offline catalog sync failed (${response.status})`);
+            }
+            for (const item of data.items as Variant[]) snapshot.set(item.id, item);
+            if (!data.hasMore) {
+              complete = true;
+              break;
+            }
+            const next = typeof data.nextCursor === 'string' ? data.nextCursor : '';
+            if (!next || usedCursors.has(next)) throw new Error('Offline catalog cursor did not advance.');
+            usedCursors.add(next);
+            cursor = next;
+          } finally {
+            clearTimeout(timeout);
+          }
+        }
+
+        if (!complete && !cancelled) throw new Error('Offline catalog is too large to snapshot safely.');
+        if (!cancelled) {
+          const completeCatalog = Array.from(snapshot.values());
+          await saveCatalogSnapshot(catalogScopeKey, completeCatalog);
+          setOfflineCatalogCount(completeCatalog.length);
+          setCategories(Array.from(new Set(
+            completeCatalog.map((item) => item.category).filter((value): value is string => Boolean(value)),
+          )).sort());
+        }
+      } catch (error: any) {
+        if (!cancelled && error?.name !== 'AbortError') console.error('[POS offline catalog]', error);
+      } finally {
+        if (!cancelled) setOfflineCatalogSyncing(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      activeController?.abort();
+    };
+  }, [catalogScopeKey, online, router, selectedLocationId]);
 
   useEffect(() => {
     if (!session.tenantId) return;
@@ -959,14 +1093,6 @@ export default function POSPage() {
           </div>
         )}
 
-        {/* Scanner */}
-        <div className={styles.legacyScanner} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <ScanLine size={18} color="var(--primary)" />
-          <input ref={scanRef} type="text" placeholder="Waiting for barcode scanner..."
-            onBlur={e => setTimeout(() => e.target.focus(), 100)}
-            style={{ flex: 1, background: 'none', border: 'none', color: 'var(--text-main)', fontSize: '14px', outline: 'none', fontFamily: 'Outfit' }} />
-        </div>
-
         <div className={styles.commandBar}>
           <Search size={19} color="var(--primary)" />
           <input
@@ -1015,6 +1141,11 @@ export default function POSPage() {
           </div>
           <div className={styles.resultMeta}>
             Showing {visibleCatalog.length}{hasMore ? '+' : ''} · {catalogSource === 'cached' ? 'offline cache' : 'live stock'}
+            {offlineCatalogSyncing
+              ? ' · refreshing offline catalog'
+              : offlineCatalogCount > 0
+                ? ` · ${offlineCatalogCount.toLocaleString()} cached on this till`
+                : ''}
           </div>
         </div>
 
