@@ -10,6 +10,7 @@ import {
   deriveSupabasePassword,
 } from '@/lib/supabase/identity'
 import { SESSION_ROLES, type SessionRole } from '@/lib/session-token'
+import { createPosTerminalToken, POS_TERMINAL_MAX_AGE_SECONDS } from '@/lib/pos-terminal'
 import {
   clearPlatformLoginFailures,
   clearStaffLoginFailures,
@@ -274,9 +275,15 @@ export async function POST(req: Request) {
       locationName: user.location_name,
     })
 
+    const terminalToken = await createPosTerminalToken(session)
+
     return NextResponse.json({
       success: true,
       redirect: redirectMap[user.role],
+      terminalToken,
+      terminalExpiresAt: terminalToken
+        ? new Date(Date.now() + POS_TERMINAL_MAX_AGE_SECONDS * 1000).toISOString()
+        : null,
       user: {
         name: user.staff_name,
         role: user.role,

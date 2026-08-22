@@ -62,7 +62,10 @@ export async function proxy(request: NextRequest) {
 
   // getUser revalidates the cookie-backed session with Supabase Auth.
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
+  const signedInAt = Date.parse(user?.last_sign_in_at || '')
+  const sessionTooOld = !Number.isFinite(signedInAt)
+    || Date.now() - signedInAt > 12 * 60 * 60 * 1000
+  if (!user || sessionTooOld) {
     const denied = isApi
       ? apiError('Unauthorized: invalid or expired session', 401)
       : loginRedirect(request)

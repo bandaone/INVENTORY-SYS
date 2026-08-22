@@ -31,6 +31,7 @@ export interface ReceiptData {
   zraIntrlData?: string;
   zraMrcNo?: string;
   zraQueued?: boolean;
+  syncPending?: boolean;
   items: ReceiptItem[];
   payment_method: string;
   cashierName: string;
@@ -164,6 +165,16 @@ export default function ReceiptPrint({ storeName, footerMessage, receipt, onPrin
       </div>
 
       <div className="r-solid" />
+
+      {receipt.syncPending && (
+        <>
+          <div className="r-center r-block" style={{ border: '2px solid #000', padding: '4px' }}>
+            <div className="r-bold">OFFLINE SALE — SYNC PENDING</div>
+            <div className="r-small">Keep this receipt. Stock is reserved locally and will reconcile automatically.</div>
+          </div>
+          <div className="r-solid" />
+        </>
+      )}
 
       {/* ── TRANSACTION META ── */}
       <div className="r-block">

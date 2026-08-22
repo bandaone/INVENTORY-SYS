@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from 'next/server';
 import { connectTenantClient, fetchTenantQuery } from '@/lib/db';
-import { requireTenantSession, SessionError } from '@/lib/session';
+import { SessionError } from '@/lib/session';
+import { requirePosTerminalSession } from '@/lib/pos-terminal';
 
 const RETURN_ROLES = ['owner', 'store_manager', 'cashier'] as const;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -15,8 +16,8 @@ class ReturnError extends Error {
   }
 }
 
-async function requireActiveReturnSession() {
-  const session = await requireTenantSession(RETURN_ROLES);
+async function requireActiveReturnSession(request: Request) {
+  const session = await requirePosTerminalSession(request, RETURN_ROLES);
   const staffRows = await fetchTenantQuery(session.tenantId, `
     SELECT id, role, location_id
     FROM staff
@@ -70,7 +71,7 @@ async function getShiftContext(
 
 export async function GET(req: Request) {
   try {
-    const session = await requireActiveReturnSession();
+    const session = await requireActiveReturnSession(req);
     const tenantId = session.tenantId;
     await getShiftContext(tenantId, session.staffId, session.shiftId, session.locationId);
 
@@ -144,7 +145,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const session = await requireActiveReturnSession();
+    const session = await requireActiveReturnSession(req);
     const tenantId = session.tenantId;
     const staffId = session.staffId;
     const staffRole = session.role;

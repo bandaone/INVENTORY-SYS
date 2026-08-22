@@ -67,6 +67,14 @@ export async function getVerifiedSession(): Promise<AppSession | null> {
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) return null
 
+  // Supabase refresh tokens are intentionally persistent. Retail terminals are
+  // shared devices, so the application also enforces a hard re-authentication
+  // window based on the last password sign-in instead of allowing refreshes to
+  // silently keep a cashier logged in for days.
+  const signedInAt = Date.parse(user.last_sign_in_at || '')
+  const maxAgeMs = 12 * 60 * 60 * 1000
+  if (!Number.isFinite(signedInAt) || Date.now() - signedInAt > maxAgeMs) return null
+
   const adminResult = await adminPool.query(`
     SELECT id, auth_version
     FROM platform_admins

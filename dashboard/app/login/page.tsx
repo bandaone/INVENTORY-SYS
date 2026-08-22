@@ -2,6 +2,7 @@
 import { useState, useRef } from 'react';
 import { Lock, Hexagon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { clearPosTerminalSession, storePosTerminalSession } from '@/lib/pos-constants';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -46,7 +47,11 @@ export default function LoginPage() {
     try {
       const res  = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim(), pin: pinValue }) });
       const data = await res.json();
-      if (res.ok) { router.replace(data.redirect || '/'); }
+      if (res.ok) {
+        if (data.terminalToken) storePosTerminalSession(data.terminalToken);
+        else clearPosTerminalSession();
+        router.replace(data.redirect || '/');
+      }
       else        { setError(data.error || 'Invalid credentials'); setPin(['', '', '', '']); pinRefs[0].current?.focus(); }
     } catch { setError('Cannot reach server — please try again.'); }
     setLoading(false);
